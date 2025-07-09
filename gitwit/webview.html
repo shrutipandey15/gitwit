@@ -19,9 +19,23 @@
 <body>
     <div id="root"></div>
 
-    <script type="text/babel">
+    <script>
+        const vscode = acquireVsCodeApi();
+    </script>
 
+    <script type="text/babel">
         function App() {
+            const [code, setCode] = React.useState('');
+            const [persona, setPersona] = React.useState('Strict Tech Lead');
+
+            const handleReviewClick = () => {
+                vscode.postMessage({
+                    command: 'review',
+                    code: code,
+                    persona: persona
+                });
+            };
+
             return (
                 <div className="p-4 space-y-6">
                     <header className="text-center">
@@ -38,6 +52,8 @@
                             rows="10"
                             className="w-full p-2 border border-gray-600 rounded-md bg-gray-800 text-gray-200 font-mono text-sm"
                             placeholder="function hello() { ... }"
+                            value={code}
+                            onChange={(e) => setCode(e.target.value)}
                         ></textarea>
                     </div>
 
@@ -48,6 +64,8 @@
                         <select
                             id="persona"
                             className="w-full p-2 border border-gray-600 rounded-md bg-gray-800 text-gray-200"
+                            value={persona}
+                            onChange={(e) => setPersona(e.target.value)}
                         >
                             <option>Strict Tech Lead</option>
                             <option>Supportive Mentor</option>
@@ -58,7 +76,10 @@
                     </div>
 
                     <div>
-                        <button className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition-colors">
+                        <button
+                            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition-colors"
+                            onClick={handleReviewClick}
+                        >
                             Get Review
                         </button>
                     </div>
@@ -67,7 +88,7 @@
                         <h2 className="text-lg font-semibold">Review</h2>
                         <div className="p-4 bg-gray-800 rounded-md space-y-2">
                             <p className="text-gray-400 italic">
-                                Code review will appear here...
+                                Your code review will appear here...
                             </p>
                         </div>
                     </div>
@@ -78,7 +99,6 @@
         const container = document.getElementById('root');
         const root = ReactDOM.createRoot(container);
         root.render(<App />);
-
     </script>
 </body>
 </html>
