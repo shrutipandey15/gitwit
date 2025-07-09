@@ -9,6 +9,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import fetch from 'node-fetch';
 
 export function activate(context: vscode.ExtensionContext) {
 
@@ -28,13 +29,38 @@ export function activate(context: vscode.ExtensionContext) {
         panel.webview.html = getWebviewContent(context);
 
         panel.webview.onDidReceiveMessage(
-            message => {
+            async message => { 
                 switch (message.command) {
                     case 'review':
-                        console.log('Received code to review:', message.code);
-                        console.log('Selected persona:', message.persona);
+                        vscode.window.showInformationMessage('Sending code to GitWit backend...');
 
-                        vscode.window.showInformationMessage(`Reviewing code with the ${message.persona} persona...`);
+                        try {
+                            const response = await fetch('http://localhost:3001/review', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                    code: message.code,
+                                    persona: message.persona
+                                }),
+                            });
+
+                            if (!response.ok) {
+                                throw new Error(`HTTP error! status: ${response.status}`);
+                            }
+
+                            const data = await response.json();
+
+                            panel.webview.postMessage({
+                                command: 'displayReview',
+                                review: data.review
+                            });
+
+                        } catch (error) {
+                            console.error('Error calling backend:', error);
+                            vscode.window.showErrorMessage('Failed to get review from backend. Is the server running?');
+                        }
                         return;
                 }
             },

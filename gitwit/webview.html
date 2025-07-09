@@ -9,31 +9,37 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
-        body {
-            background-color: transparent;
-            color: var(--vscode-editor-foreground);
-            font-family: var(--vscode-font-family);
-        }
+        body { background-color: transparent; color: var(--vscode-editor-foreground); font-family: var(--vscode-font-family); }
+        .review-card { border-left: 4px solid #4f46e5; }
     </style>
 </head>
 <body>
     <div id="root"></div>
-
-    <script>
-        const vscode = acquireVsCodeApi();
-    </script>
+    <script> const vscode = acquireVsCodeApi(); </script>
 
     <script type="text/babel">
         function App() {
             const [code, setCode] = React.useState('');
             const [persona, setPersona] = React.useState('Strict Tech Lead');
+            const [review, setReview] = React.useState(null); 
+            const [isLoading, setIsLoading] = React.useState(false);
+
+            React.useEffect(() => {
+                const handleMessage = (event) => {
+                    const message = event.data;
+                    if (message.command === 'displayReview') {
+                        setReview(message.review);
+                        setIsLoading(false); 
+                    }
+                };
+                window.addEventListener('message', handleMessage);
+                return () => window.removeEventListener('message', handleMessage);
+            }, []);
 
             const handleReviewClick = () => {
-                vscode.postMessage({
-                    command: 'review',
-                    code: code,
-                    persona: persona
-                });
+                setIsLoading(true);
+                setReview(null);
+                vscode.postMessage({ command: 'review', code, persona });
             };
 
             return (
@@ -44,52 +50,48 @@
                     </header>
 
                     <div className="space-y-2">
-                        <label htmlFor="codeInput" className="block text-sm font-medium">
-                            Paste Your Code Snippet
-                        </label>
-                        <textarea
-                            id="codeInput"
-                            rows="10"
-                            className="w-full p-2 border border-gray-600 rounded-md bg-gray-800 text-gray-200 font-mono text-sm"
-                            placeholder="function hello() { ... }"
-                            value={code}
-                            onChange={(e) => setCode(e.target.value)}
-                        ></textarea>
+                        <label htmlFor="codeInput" className="block text-sm font-medium">Paste Your Code Snippet</label>
+                        <textarea id="codeInput" rows="10" className="w-full p-2 border border-gray-600 rounded-md bg-gray-800 text-gray-200 font-mono text-sm" placeholder="function hello() { ... }" value={code} onChange={(e) => setCode(e.target.value)} disabled={isLoading}></textarea>
                     </div>
 
                     <div className="space-y-2">
-                        <label htmlFor="persona" className="block text-sm font-medium">
-                            Choose a Reviewer Persona
-                        </label>
-                        <select
-                            id="persona"
-                            className="w-full p-2 border border-gray-600 rounded-md bg-gray-800 text-gray-200"
-                            value={persona}
-                            onChange={(e) => setPersona(e.target.value)}
-                        >
+                        <label htmlFor="persona" className="block text-sm font-medium">Choose a Reviewer Persona</label>
+                        <select id="persona" className="w-full p-2 border border-gray-600 rounded-md bg-gray-800 text-gray-200" value={persona} onChange={(e) => setPersona(e.target.value)} disabled={isLoading}>
                             <option>Strict Tech Lead</option>
                             <option>Supportive Mentor</option>
                             <option>Sarcastic Reviewer</option>
-                            <option>Code Poet</option>
-                            <option>Paranoid Security Engineer</option>
                         </select>
                     </div>
 
                     <div>
-                        <button
-                            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition-colors"
-                            onClick={handleReviewClick}
-                        >
-                            Get Review
+                        <button className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition-colors disabled:bg-gray-500" onClick={handleReviewClick} disabled={isLoading}>
+                            {isLoading ? 'Getting Review...' : 'Get Review'}
                         </button>
                     </div>
 
                     <div className="space-y-4 pt-4 border-t border-gray-700">
                         <h2 className="text-lg font-semibold">Review</h2>
-                        <div className="p-4 bg-gray-800 rounded-md space-y-2">
-                            <p className="text-gray-400 italic">
-                                Your code review will appear here...
-                            </p>
+                        <div className="p-4 bg-gray-800 rounded-md space-y-3">
+                            {review ? (
+                                <div className="space-y-4">
+                                    <div className="p-3 bg-gray-700 rounded-md review-card">
+                                        <h3 className="font-bold text-indigo-300">Summary</h3>
+                                        <p className="text-gray-300">{review.summary}</p>
+                                    </div>
+                                    <div className="p-3 bg-gray-700 rounded-md review-card">
+                                        <h3 className="font-bold text-indigo-300">Critique</h3>
+                                        <p className="text-gray-300">{review.critique}</p>
+                                    </div>
+                                     <div className="p-3 bg-gray-700 rounded-md review-card">
+                                        <h3 className="font-bold text-indigo-300">Suggestions</h3>
+                                        <p className="text-gray-300">{review.suggestions}</p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="text-gray-400 italic">
+                                    {isLoading ? 'Contacting the backend...' : 'Your code review will appear here...'}
+                                </p>
+                            )}
                         </div>
                     </div>
                 </div>
