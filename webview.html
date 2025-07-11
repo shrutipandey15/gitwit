@@ -21,7 +21,7 @@
         function App() {
             const [code, setCode] = React.useState('');
             const [persona, setPersona] = React.useState('Strict Tech Lead');
-            const [review, setReview] = React.useState(null); 
+            const [review, setReview] = React.useState(null);
             const [isLoading, setIsLoading] = React.useState(false);
 
             React.useEffect(() => {
@@ -29,7 +29,7 @@
                     const message = event.data;
                     if (message.command === 'displayReview') {
                         setReview(message.review);
-                        setIsLoading(false); 
+                        setIsLoading(false);
                     }
                 };
                 window.addEventListener('message', handleMessage);
@@ -60,6 +60,8 @@
                             <option>Strict Tech Lead</option>
                             <option>Supportive Mentor</option>
                             <option>Sarcastic Reviewer</option>
+                            <option>Code Poet</option>
+                            <option>Paranoid Security Engineer</option>
                         </select>
                     </div>
 

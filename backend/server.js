@@ -37,16 +37,67 @@ const CIRCUIT_BREAKER_THRESHOLD = 3;
 const CIRCUIT_BREAKER_TIMEOUT = 60000;
 
 function getPrompt(persona, code) {
+    const baseInstruction = `
+        Analyze the following code snippet. Provide your review in a pure JSON format, with no markdown wrappers or extra text. 
+        The JSON object must have three string keys: "summary", "critique", and "suggestions".
+    `;
+
     switch (persona) {
         case 'Strict Tech Lead':
             return `
-                You are a Strict Tech Lead reviewing a code snippet. Your standards are high.
-                Analyze the following code:
+                You are a Strict Tech Lead reviewing code. Your standards are high. You are direct, concise, and focus on performance, readability, and best practices.
+                ${baseInstruction}
+                
+                Code:
                 \`\`\`
                 ${code}
                 \`\`\`
-                Provide your review in a pure JSON format, with no markdown wrappers or extra text. The JSON object must have three string keys: "summary", "critique", and "suggestions".
             `;
+        
+        case 'Supportive Mentor':
+            return `
+                You are a Supportive Mentor reviewing code. Your goal is to encourage and educate. Be friendly, explain the "why" behind your feedback, and offer clear, actionable advice.
+                ${baseInstruction}
+
+                Code:
+                \`\`\`
+                ${code}
+                \`\`\`
+            `;
+
+        case 'Sarcastic Reviewer':
+            return `
+                You are a Sarcastic Reviewer. You are witty, blunt, and use humor or light-hearted roasts to point out flaws. Your feedback is still technically valuable, but delivered with a sharp tongue.
+                ${baseInstruction}
+
+                Code:
+                \`\`\`
+                ${code}
+                \`\`\`
+            `;
+
+        case 'Code Poet':
+            return `
+                You are a Code Poet. You explain code quality and flaws through metaphor, rhyme, or poetic language. Your review should be beautiful but also technically insightful.
+                ${baseInstruction}
+
+                Code:
+                \`\`\`
+                ${code}
+                \`\`\`
+            `;
+
+        case 'Paranoid Security Engineer':
+             return `
+                You are a Paranoid Security Engineer. You ONLY care about security vulnerabilities. Ignore all other aspects of the code like style or performance unless they create a security risk. Focus on injection, data exposure, weak authentication, and other potential exploits.
+                ${baseInstruction}
+
+                Code:
+                \`\`\`
+                ${code}
+                \`\`\`
+            `;
+
         default:
             return `Analyze this code: ${code}`;
     }
@@ -54,30 +105,21 @@ function getPrompt(persona, code) {
 function parseAndValidateJsonResponse(rawText) {
     const jsonRegex = /\{[\s\S]*\}/;
     const match = rawText.match(jsonRegex);
-
-    if (!match) {
-        throw new Error("AI response did not contain a valid JSON object.");
-    }
-
+    if (!match) throw new Error("AI response did not contain a valid JSON object.");
     const jsonString = match[0];
     let parsedJson;
-
     try {
         parsedJson = JSON.parse(jsonString);
     } catch (error) {
         throw new Error(`Failed to parse AI response as JSON. Details: ${error.message}`);
     }
-
     const requiredKeys = ['summary', 'critique', 'suggestions'];
     const missingKeys = requiredKeys.filter(key => !(key in parsedJson));
-
     if (missingKeys.length > 0) {
         throw new Error(`AI response is missing required keys: ${missingKeys.join(', ')}`);
     }
-
     return parsedJson;
 }
-
 
 function isCircuitBreakerOpen(serviceName) {
     const breaker = circuitBreakers[serviceName];
