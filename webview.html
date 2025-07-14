@@ -22,6 +22,7 @@
             const [code, setCode] = React.useState('');
             const [persona, setPersona] = React.useState('Strict Tech Lead');
             const [review, setReview] = React.useState(null);
+            const [productionRisk, setProductionRisk] = React.useState([]); 
             const [isLoading, setIsLoading] = React.useState(false);
 
             React.useEffect(() => {
@@ -29,6 +30,7 @@
                     const message = event.data;
                     if (message.command === 'displayReview') {
                         setReview(message.review);
+                        setProductionRisk(message.productionRisk || []);
                         setIsLoading(false);
                     }
                 };
@@ -39,6 +41,7 @@
             const handleReviewClick = () => {
                 setIsLoading(true);
                 setReview(null);
+                setProductionRisk([]);
                 vscode.postMessage({ command: 'review', code, persona });
             };
 
@@ -70,32 +73,46 @@
                             {isLoading ? 'Getting Review...' : 'Get Review'}
                         </button>
                     </div>
-
-                    <div className="space-y-4 pt-4 border-t border-gray-700">
-                        <h2 className="text-lg font-semibold">Review</h2>
-                        <div className="p-4 bg-gray-800 rounded-md space-y-3">
-                            {review ? (
-                                <div className="space-y-4">
-                                    <div className="p-3 bg-gray-700 rounded-md review-card">
-                                        <h3 className="font-bold text-indigo-300">Summary</h3>
-                                        <p className="text-gray-300">{review.summary}</p>
-                                    </div>
-                                    <div className="p-3 bg-gray-700 rounded-md review-card">
-                                        <h3 className="font-bold text-indigo-300">Critique</h3>
-                                        <p className="text-gray-300">{review.critique}</p>
-                                    </div>
-                                     <div className="p-3 bg-gray-700 rounded-md review-card">
-                                        <h3 className="font-bold text-indigo-300">Suggestions</h3>
-                                        <p className="text-gray-300">{review.suggestions}</p>
-                                    </div>
+                    
+                    {review && (
+                        <div className="space-y-4 pt-4 border-t border-gray-700">
+                            <h2 className="text-lg font-semibold">Review</h2>
+                            <div className="p-4 bg-gray-800 rounded-md space-y-3">
+                                <div className="p-3 bg-gray-700 rounded-md review-card">
+                                    <h3 className="font-bold text-indigo-300">Summary</h3>
+                                    <p className="text-gray-300">{review.summary}</p>
                                 </div>
-                            ) : (
-                                <p className="text-gray-400 italic">
-                                    {isLoading ? 'Contacting the backend...' : 'Your code review will appear here...'}
-                                </p>
-                            )}
+                                <div className="p-3 bg-gray-700 rounded-md review-card">
+                                    <h3 className="font-bold text-indigo-300">Critique</h3>
+                                    <p className="text-gray-300">{review.critique}</p>
+                                </div>
+                                 <div className="p-3 bg-gray-700 rounded-md review-card">
+                                    <h3 className="font-bold text-indigo-300">Suggestions</h3>
+                                    <p className="text-gray-300">{review.suggestions}</p>
+                                </div>
+                            </div>
                         </div>
-                    </div>
+                    )}
+
+                    {productionRisk.length > 0 && (
+                        <div className="space-y-4 pt-4 border-t border-gray-700">
+                            <h2 className="text-lg font-semibold">🚨 Production Risk Watch</h2>
+                            <ul className="p-4 bg-gray-800 rounded-md space-y-2">
+                                {productionRisk.map((item, index) => (
+                                    <li key={index} className="flex items-start">
+                                        <span className="mr-2">{item.isSafe ? '✅' : '⚠️'}</span>
+                                        <span>{item.risk}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+
+                    {!review && !isLoading && (
+                         <div className="space-y-4 pt-4 border-t border-gray-700 text-center">
+                            <p className="text-gray-400 italic">Your code review will appear here...</p>
+                         </div>
+                    )}
                 </div>
             );
         }

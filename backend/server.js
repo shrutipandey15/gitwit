@@ -38,8 +38,12 @@ const CIRCUIT_BREAKER_TIMEOUT = 60000;
 
 function getPrompt(persona, code) {
     const baseInstruction = `
-        Analyze the following code snippet. Provide your review in a pure JSON format, with no markdown wrappers or extra text. 
-        The JSON object must have three string keys: "summary", "critique", and "suggestions".
+        Analyze the following code snippet. Provide your review in a pure JSON format, with no markdown wrappers or extra text.
+        The JSON object must have two top-level keys:
+        1. "review": An object with three string keys: "summary", "critique", and "suggestions".
+        2. "productionRisk": An array of objects, where each object has a "risk" (string describing a potential production issue like scalability, security, or error handling) and a "isSafe" (boolean, true if the code handles this risk well, false otherwise).
+
+        Focus the production risks on real-world operational concerns.
     `;
 
     switch (persona) {
@@ -106,18 +110,26 @@ function parseAndValidateJsonResponse(rawText) {
     const jsonRegex = /\{[\s\S]*\}/;
     const match = rawText.match(jsonRegex);
     if (!match) throw new Error("AI response did not contain a valid JSON object.");
+    
     const jsonString = match[0];
     let parsedJson;
+
     try {
         parsedJson = JSON.parse(jsonString);
     } catch (error) {
         throw new Error(`Failed to parse AI response as JSON. Details: ${error.message}`);
     }
-    const requiredKeys = ['summary', 'critique', 'suggestions'];
-    const missingKeys = requiredKeys.filter(key => !(key in parsedJson));
-    if (missingKeys.length > 0) {
-        throw new Error(`AI response is missing required keys: ${missingKeys.join(', ')}`);
+
+    if (!parsedJson.review || !Array.isArray(parsedJson.productionRisk)) {
+        throw new Error("AI response is missing 'review' object or 'productionRisk' array.");
     }
+
+    const requiredReviewKeys = ['summary', 'critique', 'suggestions'];
+    const missingReviewKeys = requiredReviewKeys.filter(key => !(key in parsedJson.review));
+    if (missingReviewKeys.length > 0) {
+        throw new Error(`AI response's 'review' object is missing keys: ${missingReviewKeys.join(', ')}`);
+    }
+
     return parsedJson;
 }
 
@@ -226,9 +238,13 @@ app.post('/review', async (req, res) => {
         console.log('Persona:', persona);
 
         const prompt = getPrompt(persona, code);
-        const { result: reviewJson, service } = await generateReviewWithFallback(prompt);
+        const { result: reviewData, service } = await generateReviewWithFallback(prompt);
 
-        res.json({ review: reviewJson, service: service });
+        res.json({ 
+            review: reviewData.review,
+            productionRisk: reviewData.productionRisk,
+            service: service 
+        });
 
     } catch (error) {
         console.error("Error generating AI review:", error.message);

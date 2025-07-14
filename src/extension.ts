@@ -1,9 +1,7 @@
 /**
  * GitWit - extension.ts
- *
- * This is the main entry point for the GitWit VS Code extension.
- * It's responsible for activating the extension, registering commands,
- * and creating the webview panel where the UI will be rendered.
+ * This commit fixes a bug where the production risk data was not being
+ * forwarded from the backend to the webview UI.
  */
 
 import * as vscode from 'vscode';
@@ -29,7 +27,7 @@ export function activate(context: vscode.ExtensionContext) {
         panel.webview.html = getWebviewContent(context);
 
         panel.webview.onDidReceiveMessage(
-            async message => { 
+            async message => {
                 switch (message.command) {
                     case 'review':
                         vscode.window.showInformationMessage('Sending code to GitWit backend...');
@@ -51,10 +49,10 @@ export function activate(context: vscode.ExtensionContext) {
                             }
 
                             const data = await response.json();
-
                             panel.webview.postMessage({
                                 command: 'displayReview',
-                                review: data.review
+                                review: data.review,
+                                productionRisk: data.productionRisk
                             });
 
                         } catch (error) {
