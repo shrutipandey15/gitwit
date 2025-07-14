@@ -1,7 +1,6 @@
 /**
  * GitWit - extension.ts
- * This commit fixes a bug where the production risk data was not being
- * forwarded from the backend to the webview UI.
+ * This commit adds the clipboard functionality.
  */
 
 import * as vscode from 'vscode';
@@ -35,9 +34,7 @@ export function activate(context: vscode.ExtensionContext) {
                         try {
                             const response = await fetch('http://localhost:3001/review', {
                                 method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                },
+                                headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
                                     code: message.code,
                                     persona: message.persona
@@ -58,6 +55,13 @@ export function activate(context: vscode.ExtensionContext) {
                         } catch (error) {
                             console.error('Error calling backend:', error);
                             vscode.window.showErrorMessage('Failed to get review from backend. Is the server running?');
+                        }
+                        return;
+                        
+                    case 'copyToClipboard':
+                        if (message.text) {
+                            await vscode.env.clipboard.writeText(message.text);
+                            vscode.window.showInformationMessage('Review copied to clipboard!');
                         }
                         return;
                 }
