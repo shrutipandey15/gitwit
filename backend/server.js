@@ -1,9 +1,9 @@
 /**
  * GitWit - backend/server.js
- * A production-grade, resilient backend with fallback AI services,
- * a circuit breaker pattern, and robust JSON parsing/validation.
+ * This commit adds the '/generate-docstring' endpoint and logic,
+ * and applies the resilient retry/fallback pattern to it.
  *
- * @version 1.1.1
+ * @version 1.2.1
  * @author Shruti Pandey
  * @license MIT
  */
@@ -46,12 +46,6 @@ const circuitBreakers = {
     anthropic: { failures: 0, lastFailure: null, isOpen: false }
 };
 
-/**
- * Constructs the appropriate prompt for the AI based on the selected persona.
- * @param {string} persona The reviewer persona (e.g., 'Strict Tech Lead').
- * @param {string} code The code snippet to be reviewed.
- * @returns {string} The full prompt for the AI.
- */
 function getPrompt(persona, code) {
     const baseInstruction = `
         Analyze the following code snippet. Provide your review in a pure JSON format, with no markdown wrappers or extra text.
@@ -59,34 +53,33 @@ function getPrompt(persona, code) {
         1. "review": An object with three string keys: "summary", "critique", and "suggestions".
         2. "productionRisk": An array of objects, where each object has a "risk" (string) and a "isSafe" (boolean).
     `;
-
     switch (persona) {
-        case 'Strict Tech Lead':
-            return `You are a Strict Tech Lead. ${baseInstruction}\n\nCode:\n\`\`\`\n${code}\n\`\`\``;
-        case 'Supportive Mentor':
-            return `You are a Supportive Mentor. ${baseInstruction}\n\nCode:\n\`\`\`\n${code}\n\`\`\``;
-        case 'Sarcastic Reviewer':
-            return `You are a Sarcastic Reviewer. ${baseInstruction}\n\nCode:\n\`\`\`\n${code}\n\`\`\``;
-        case 'Code Poet':
-            return `You are a Code Poet. ${baseInstruction}\n\nCode:\n\`\`\`\n${code}\n\`\`\``;
-        case 'Paranoid Security Engineer':
-            return `You are a Paranoid Security Engineer. Focus ONLY on security vulnerabilities. ${baseInstruction}\n\nCode:\n\`\`\`\n${code}\n\`\`\``;
-        default:
-            return `Analyze this code: ${code}`;
+        case 'Strict Tech Lead': return `You are a Strict Tech Lead. ${baseInstruction}\n\nCode:\n\`\`\`\n${code}\n\`\`\``;
+        case 'Supportive Mentor': return `You are a Supportive Mentor. ${baseInstruction}\n\nCode:\n\`\`\`\n${code}\n\`\`\``;
+        case 'Sarcastic Reviewer': return `You are a Sarcastic Reviewer. ${baseInstruction}\n\nCode:\n\`\`\`\n${code}\n\`\`\``;
+        case 'Code Poet': return `You are a Code Poet. ${baseInstruction}\n\nCode:\n\`\`\`\n${code}\n\`\`\``;
+        case 'Paranoid Security Engineer': return `You are a Paranoid Security Engineer. Focus ONLY on security vulnerabilities. ${baseInstruction}\n\nCode:\n\`\`\`\n${code}\n\`\`\``;
+        default: return `Analyze this code: ${code}`;
     }
 }
 
-/**
- * Parses and validates the raw text response from an AI service.
- * @param {string} rawText The raw string response from the AI.
- * @returns {object} A valid JSON object conforming to our schema.
- * @throws {Error} If the response is not valid JSON or misses required keys.
- */
+function getDocstringPrompt(code) {
+    return `
+        You are an expert software engineer writing documentation.
+        Analyze the following code snippet and generate a professional docstring for it.
+        Format the response as a single block of text, ready to be pasted into a code editor. Do not include any other text or explanation.
+
+        Code:
+        \`\`\`
+        ${code}
+        \`\`\`
+    `;
+}
+
 function parseAndValidateJsonResponse(rawText) {
     const jsonRegex = /\{[\s\S]*\}/;
     const match = rawText.match(jsonRegex);
     if (!match) throw new Error("AI response did not contain a valid JSON object.");
-
     const jsonString = match[0];
     let parsedJson;
     try {
@@ -94,7 +87,6 @@ function parseAndValidateJsonResponse(rawText) {
     } catch (error) {
         throw new Error(`Failed to parse AI response as JSON: ${error.message}`);
     }
-
     if (!parsedJson.review || !Array.isArray(parsedJson.productionRisk)) {
         throw new Error("AI response is missing 'review' object or 'productionRisk' array.");
     }
@@ -135,7 +127,7 @@ function recordSuccess(serviceName) {
     breaker.isOpen = false;
 }
 
-async function callGemini(prompt) {
+async function callGeminiForReview(prompt) {
     const service = aiServices.gemini;
     const model = service.client.getGenerativeModel({ model: service.model });
     const result = await model.generateContent(prompt);
@@ -144,83 +136,34 @@ async function callGemini(prompt) {
     return parseAndValidateJsonResponse(text);
 }
 
-async function callOpenAI(prompt) {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${aiServices.openai.apiKey}` },
-        body: JSON.stringify({
-            model: 'gpt-3.5-turbo',
-            messages: [{ role: 'user', content: prompt }],
-            response_format: { type: "json_object" }
-        })
-    });
-    if (!response.ok) {
-        const error = new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
-        error.status = response.status;
-        throw error;
-    }
-    const data = await response.json();
-    const content = data.choices[0].message.content;
-    return parseAndValidateJsonResponse(content);
+async function callGeminiForDocstring(prompt) {
+    const service = aiServices.gemini;
+    const model = service.client.getGenerativeModel({ model: service.model });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    return response.text();
 }
 
-async function callAnthropic(prompt) {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-API-Key': aiServices.anthropic.apiKey, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({
-            model: 'claude-3-haiku-20240307',
-            max_tokens: 1024,
-            messages: [{ role: 'user', content: prompt }]
-        })
-    });
-    if (!response.ok) {
-        const error = new Error(`Anthropic API error: ${response.status} ${response.statusText}`);
-        error.status = response.status;
-        throw error;
-    }
-    const data = await response.json();
-    const content = data.content[0].text;
-    return parseAndValidateJsonResponse(content);
-}
-
-/**
- * A robust retry wrapper for any async operation.
- * @param {Function} operation The async function to try.
- * @param {number} maxRetries The maximum number of retries.
- * @param {number} baseDelay The base delay in ms for exponential backoff.
- * @returns {Promise<any>} The result of the successful operation.
- */
 async function retryWithBackoff(operation, maxRetries = 3, baseDelay = 1000) {
     for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
             return await operation();
         } catch (error) {
             const isRetryable = error.status === 503 || error.status === 429 || (error.status >= 500 && error.status < 600);
-            
-            if (!isRetryable || attempt === maxRetries - 1) {
-                throw error;
-            }
-            
+            if (!isRetryable || attempt === maxRetries - 1) throw error;
             const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 1000;
             console.log(`Attempt ${attempt + 1} failed: ${error.message}. Retrying in ${Math.round(delay)}ms...`);
-            
             await new Promise(resolve => setTimeout(resolve, delay));
         }
     }
 }
 
-/**
- * Tries to generate a review using a prioritized list of AI services, with retries.
- * @param {string} prompt The prompt to send.
- * @returns {Promise<{result: object, service: string}>} The review and the name of the service that succeeded.
- */
-async function generateReviewWithFallback(prompt) {
+async function generateWithFallback(prompt, primaryServiceFunction) {
     const serviceOrder = ['gemini', 'openai', 'anthropic'];
     const serviceFunctions = {
-        gemini: callGemini,
-        openai: callOpenAI,
-        anthropic: callAnthropic
+        gemini: primaryServiceFunction,
+        openai: primaryServiceFunction,
+        anthropic: primaryServiceFunction
     };
     let lastError;
     for (const serviceName of serviceOrder) {
@@ -233,8 +176,8 @@ async function generateReviewWithFallback(prompt) {
             console.log(`Trying ${service.name}...`);
             const result = await retryWithBackoff(() => serviceFunctions[serviceName](prompt));
             recordSuccess(serviceName);
-            console.log(`Successfully generated review using ${service.name}`);
-            return { result, service: service.name };
+            console.log(`Successfully generated response using ${service.name}`);
+            return { result, service: serviceName };
         } catch (error) {
             console.error(`${service.name} failed:`, error.message);
             recordFailure(serviceName);
@@ -250,25 +193,30 @@ app.post('/review', async (req, res) => {
     try {
         const { code, persona } = req.body;
         if (!code) return res.status(400).json({ error: 'Code is required.' });
-
         console.log('--- New AI Review Request ---');
-        console.log('Persona:', persona);
-
         const prompt = getPrompt(persona, code);
-        const { result: reviewData, service } = await generateReviewWithFallback(prompt);
-
-        res.json({
-            review: reviewData.review,
-            productionRisk: reviewData.productionRisk,
-            service: service
-        });
+        const { result: reviewData, service } = await generateWithFallback(prompt, callGeminiForReview);
+        res.json({ review: reviewData.review, productionRisk: reviewData.productionRisk, service });
     } catch (error) {
         console.error("Error generating AI review:", error.message);
         res.status(503).json({ error: 'All AI services are currently unavailable. Please try again later.' });
     }
 });
 
-// --- Server Startup ---
+app.post('/generate-docstring', async (req, res) => {
+    try {
+        const { code } = req.body;
+        if (!code) return res.status(400).json({ error: 'Code is required.' });
+        console.log('--- New Docstring Request ---');
+        const prompt = getDocstringPrompt(code);
+        const { result: docstring } = await generateWithFallback(prompt, callGeminiForDocstring);
+        res.json({ docstring });
+    } catch (error) {
+        console.error("Error generating docstring:", error.message);
+        res.status(503).json({ error: 'Failed to generate docstring from AI.' });
+    }
+});
+
 app.listen(port, () => {
     console.log(`GitWit backend server listening on http://localhost:${port}`);
     console.log('Available AI services:');

@@ -1,6 +1,6 @@
 /**
  * GitWit - extension.ts
- * This commit adds the clipboard functionality.
+ * This commit adds the logic to handle the 'generateDocstring' command.
  */
 
 import * as vscode from 'vscode';
@@ -62,6 +62,29 @@ export function activate(context: vscode.ExtensionContext) {
                         if (message.text) {
                             await vscode.env.clipboard.writeText(message.text);
                             vscode.window.showInformationMessage('Review copied to clipboard!');
+                        }
+                        return;
+
+                    case 'generateDocstring':
+                        vscode.window.showInformationMessage('Generating docstring with GitWit...');
+                        try {
+                            const response = await fetch('http://localhost:3001/generate-docstring', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ code: message.code }),
+                            });
+                            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                            
+                            const data = await response.json();
+
+                            panel.webview.postMessage({
+                                command: 'displayDocstring',
+                                docstring: data.docstring
+                            });
+
+                        } catch (error) {
+                            console.error('Error calling docstring backend:', error);
+                            vscode.window.showErrorMessage('Failed to generate docstring.');
                         }
                         return;
                 }

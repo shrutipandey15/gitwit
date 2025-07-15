@@ -25,7 +25,6 @@
     <script> const vscode = acquireVsCodeApi(); </script>
 
     <script type="text/babel">
-
         const Header = () => (
             <header className="text-center">
                 <h1 className="text-2xl font-bold">GitWit</h1>
@@ -75,7 +74,7 @@
 
         const ProductionRiskSection = ({ risks }) => (
             <div className="space-y-4 pt-4 border-t border-gray-700">
-                <h2 className="text-lg font-semibold">🚨 Production Risk Watch</h2>
+                <h2 className="text-lg font-semibold">Production Risk Watch</h2>
                 <ul className="p-4 bg-gray-800 rounded-md space-y-2">
                     {risks.map((item, index) => (
                         <li key={index} className="flex items-start">
@@ -87,6 +86,17 @@
             </div>
         );
 
+        const DocstringSection = ({ docstring }) => (
+            <div className="space-y-4 pt-4 border-t border-gray-700">
+                <h2 className="text-lg font-semibold">Generated Docstring</h2>
+                <div className="p-4 bg-gray-800 rounded-md">
+                    <pre className="text-gray-300 whitespace-pre-wrap font-mono text-sm">
+                        <code>{docstring}</code>
+                    </pre>
+                </div>
+            </div>
+        );
+
         function App() {
             const [code, setCode] = React.useState('');
             const [persona, setPersona] = React.useState('Strict Tech Lead');
@@ -94,12 +104,19 @@
             const [productionRisk, setProductionRisk] = React.useState([]);
             const [isLoading, setIsLoading] = React.useState(false);
             const [loadingMessage, setLoadingMessage] = React.useState('Your code review will appear here...');
+            const [docstring, setDocstring] = React.useState('');
+            const [activeTask, setActiveTask] = React.useState('');
 
             React.useEffect(() => {
                 const handleMessage = (event) => {
-                    if (event.data.command === 'displayReview') {
-                        setReview(event.data.review);
-                        setProductionRisk(event.data.productionRisk || []);
+                    const message = event.data;
+                    if (message.command === 'displayReview') {
+                        setReview(message.review);
+                        setProductionRisk(message.productionRisk || []);
+                        setIsLoading(false);
+                    }
+                    if (message.command === 'displayDocstring') {
+                        setDocstring(message.docstring);
                         setIsLoading(false);
                     }
                 };
@@ -133,16 +150,27 @@
 
             const handleReviewClick = () => {
                 setIsLoading(true);
+                setActiveTask('review');
                 setReview(null);
                 setProductionRisk([]);
+                setDocstring('');
                 vscode.postMessage({ command: 'review', code, persona });
+            };
+            
+            const handleGenerateDocstringClick = () => {
+                setIsLoading(true);
+                setActiveTask('docstring');
+                setReview(null);
+                setProductionRisk([]);
+                setDocstring('');
+                vscode.postMessage({ command: 'generateDocstring', code });
             };
             
             const handleCopyClick = () => {
                 if (!review) return;
                 let md = `## GitWit Review (via ${persona})\n\n### Summary\n> ${review.summary}\n\n### Critique\n> ${review.critique}\n\n### Suggestions\n> ${review.suggestions}\n\n`;
                 if (productionRisk.length > 0) {
-                    md += `### Production Risk Watch\n`;
+                    md += `### 🚨 Production Risk Watch\n`;
                     productionRisk.forEach(item => { md += `- ${item.isSafe ? '✅' : '⚠️'} ${item.risk}\n`; });
                 }
                 vscode.postMessage({ command: 'copyToClipboard', text: md });
@@ -154,14 +182,18 @@
                     <CodeInput code={code} setCode={setCode} isLoading={isLoading} />
                     <PersonaSelector persona={persona} setPersona={setPersona} isLoading={isLoading} />
                     
-                    <div>
-                        <button className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition-colors disabled:bg-gray-500" onClick={handleReviewClick} disabled={isLoading}>
-                            {isLoading ? 'Getting Review...' : 'Get Review'}
+                    <div className="flex space-x-2">
+                        <button className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition-colors disabled:bg-gray-500" onClick={handleReviewClick} disabled={isLoading}>
+                            {isLoading && activeTask === 'review' ? 'Getting Review...' : 'Get Review'}
+                        </button>
+                        <button className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md transition-colors disabled:bg-gray-500" onClick={handleGenerateDocstringClick} disabled={isLoading}>
+                             {isLoading && activeTask === 'docstring' ? 'Generating...' : 'Generate Docstring'}
                         </button>
                     </div>
                     
                     {review && <ReviewSection review={review} />}
                     {productionRisk.length > 0 && <ProductionRiskSection risks={productionRisk} />}
+                    {docstring && <DocstringSection docstring={docstring} />}
                     
                     {review && (
                         <div className="pt-4 border-t border-gray-700">
@@ -171,7 +203,7 @@
                         </div>
                     )}
 
-                    {!review && (
+                    {!review && !docstring && (
                          <div className="space-y-4 pt-4 border-t border-gray-700 text-center">
                             <p className="text-gray-400 italic">
                                 <span className={isLoading ? "inline-block border-r-2 border-transparent blinking-cursor pr-1" : ""}>
