@@ -1,3 +1,13 @@
+/**
+ * GitWit - backend/server.js
+ * A production-grade, resilient backend with fallback AI services,
+ * a circuit breaker pattern, and robust JSON parsing/validation.
+ *
+ * @version 1.1.1
+ * @author Shruti Pandey
+ * @license MIT
+ */
+
 const express = require('express');
 const cors = require('cors');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -5,6 +15,8 @@ require('dotenv').config();
 
 const app = express();
 const port = 3001;
+const CIRCUIT_BREAKER_THRESHOLD = 3;
+const CIRCUIT_BREAKER_TIMEOUT = 60000;
 
 app.use(cors());
 app.use(express.json());
@@ -33,109 +45,71 @@ const circuitBreakers = {
     openai: { failures: 0, lastFailure: null, isOpen: false },
     anthropic: { failures: 0, lastFailure: null, isOpen: false }
 };
-const CIRCUIT_BREAKER_THRESHOLD = 3;
-const CIRCUIT_BREAKER_TIMEOUT = 60000;
 
+/**
+ * Constructs the appropriate prompt for the AI based on the selected persona.
+ * @param {string} persona The reviewer persona (e.g., 'Strict Tech Lead').
+ * @param {string} code The code snippet to be reviewed.
+ * @returns {string} The full prompt for the AI.
+ */
 function getPrompt(persona, code) {
     const baseInstruction = `
         Analyze the following code snippet. Provide your review in a pure JSON format, with no markdown wrappers or extra text.
         The JSON object must have two top-level keys:
         1. "review": An object with three string keys: "summary", "critique", and "suggestions".
-        2. "productionRisk": An array of objects, where each object has a "risk" (string describing a potential production issue like scalability, security, or error handling) and a "isSafe" (boolean, true if the code handles this risk well, false otherwise).
-
-        Focus the production risks on real-world operational concerns.
+        2. "productionRisk": An array of objects, where each object has a "risk" (string) and a "isSafe" (boolean).
     `;
 
     switch (persona) {
         case 'Strict Tech Lead':
-            return `
-                You are a Strict Tech Lead reviewing code. Your standards are high. You are direct, concise, and focus on performance, readability, and best practices.
-                ${baseInstruction}
-                
-                Code:
-                \`\`\`
-                ${code}
-                \`\`\`
-            `;
-        
+            return `You are a Strict Tech Lead. ${baseInstruction}\n\nCode:\n\`\`\`\n${code}\n\`\`\``;
         case 'Supportive Mentor':
-            return `
-                You are a Supportive Mentor reviewing code. Your goal is to encourage and educate. Be friendly, explain the "why" behind your feedback, and offer clear, actionable advice.
-                ${baseInstruction}
-
-                Code:
-                \`\`\`
-                ${code}
-                \`\`\`
-            `;
-
+            return `You are a Supportive Mentor. ${baseInstruction}\n\nCode:\n\`\`\`\n${code}\n\`\`\``;
         case 'Sarcastic Reviewer':
-            return `
-                You are a Sarcastic Reviewer. You are witty, blunt, and use humor or light-hearted roasts to point out flaws. Your feedback is still technically valuable, but delivered with a sharp tongue.
-                ${baseInstruction}
-
-                Code:
-                \`\`\`
-                ${code}
-                \`\`\`
-            `;
-
+            return `You are a Sarcastic Reviewer. ${baseInstruction}\n\nCode:\n\`\`\`\n${code}\n\`\`\``;
         case 'Code Poet':
-            return `
-                You are a Code Poet. You explain code quality and flaws through metaphor, rhyme, or poetic language. Your review should be beautiful but also technically insightful.
-                ${baseInstruction}
-
-                Code:
-                \`\`\`
-                ${code}
-                \`\`\`
-            `;
-
+            return `You are a Code Poet. ${baseInstruction}\n\nCode:\n\`\`\`\n${code}\n\`\`\``;
         case 'Paranoid Security Engineer':
-             return `
-                You are a Paranoid Security Engineer. You ONLY care about security vulnerabilities. Ignore all other aspects of the code like style or performance unless they create a security risk. Focus on injection, data exposure, weak authentication, and other potential exploits.
-                ${baseInstruction}
-
-                Code:
-                \`\`\`
-                ${code}
-                \`\`\`
-            `;
-
+            return `You are a Paranoid Security Engineer. Focus ONLY on security vulnerabilities. ${baseInstruction}\n\nCode:\n\`\`\`\n${code}\n\`\`\``;
         default:
             return `Analyze this code: ${code}`;
     }
 }
+
+/**
+ * Parses and validates the raw text response from an AI service.
+ * @param {string} rawText The raw string response from the AI.
+ * @returns {object} A valid JSON object conforming to our schema.
+ * @throws {Error} If the response is not valid JSON or misses required keys.
+ */
 function parseAndValidateJsonResponse(rawText) {
     const jsonRegex = /\{[\s\S]*\}/;
     const match = rawText.match(jsonRegex);
     if (!match) throw new Error("AI response did not contain a valid JSON object.");
-    
+
     const jsonString = match[0];
     let parsedJson;
-
     try {
         parsedJson = JSON.parse(jsonString);
     } catch (error) {
-        throw new Error(`Failed to parse AI response as JSON. Details: ${error.message}`);
+        throw new Error(`Failed to parse AI response as JSON: ${error.message}`);
     }
 
     if (!parsedJson.review || !Array.isArray(parsedJson.productionRisk)) {
         throw new Error("AI response is missing 'review' object or 'productionRisk' array.");
     }
-
     const requiredReviewKeys = ['summary', 'critique', 'suggestions'];
-    const missingReviewKeys = requiredReviewKeys.filter(key => !(key in parsedJson.review));
-    if (missingReviewKeys.length > 0) {
-        throw new Error(`AI response's 'review' object is missing keys: ${missingReviewKeys.join(', ')}`);
+    const missingKeys = requiredReviewKeys.filter(key => !(key in parsedJson.review));
+    if (missingKeys.length > 0) {
+        throw new Error(`AI response's 'review' object is missing keys: ${missingKeys.join(', ')}`);
     }
-
     return parsedJson;
 }
 
 function isCircuitBreakerOpen(serviceName) {
     const breaker = circuitBreakers[serviceName];
     if (!breaker.isOpen) return false;
+
     if (Date.now() - breaker.lastFailure > CIRCUIT_BREAKER_TIMEOUT) {
         breaker.isOpen = false;
         breaker.failures = 0;
@@ -180,7 +154,11 @@ async function callOpenAI(prompt) {
             response_format: { type: "json_object" }
         })
     });
-    if (!response.ok) throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
+    if (!response.ok) {
+        const error = new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
+        error.status = response.status;
+        throw error;
+    }
     const data = await response.json();
     const content = data.choices[0].message.content;
     return parseAndValidateJsonResponse(content);
@@ -196,15 +174,54 @@ async function callAnthropic(prompt) {
             messages: [{ role: 'user', content: prompt }]
         })
     });
-    if (!response.ok) throw new Error(`Anthropic API error: ${response.status} ${response.statusText}`);
+    if (!response.ok) {
+        const error = new Error(`Anthropic API error: ${response.status} ${response.statusText}`);
+        error.status = response.status;
+        throw error;
+    }
     const data = await response.json();
     const content = data.content[0].text;
     return parseAndValidateJsonResponse(content);
 }
 
+/**
+ * A robust retry wrapper for any async operation.
+ * @param {Function} operation The async function to try.
+ * @param {number} maxRetries The maximum number of retries.
+ * @param {number} baseDelay The base delay in ms for exponential backoff.
+ * @returns {Promise<any>} The result of the successful operation.
+ */
+async function retryWithBackoff(operation, maxRetries = 3, baseDelay = 1000) {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+            return await operation();
+        } catch (error) {
+            const isRetryable = error.status === 503 || error.status === 429 || (error.status >= 500 && error.status < 600);
+            
+            if (!isRetryable || attempt === maxRetries - 1) {
+                throw error;
+            }
+            
+            const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 1000;
+            console.log(`Attempt ${attempt + 1} failed: ${error.message}. Retrying in ${Math.round(delay)}ms...`);
+            
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
+}
+
+/**
+ * Tries to generate a review using a prioritized list of AI services, with retries.
+ * @param {string} prompt The prompt to send.
+ * @returns {Promise<{result: object, service: string}>} The review and the name of the service that succeeded.
+ */
 async function generateReviewWithFallback(prompt) {
     const serviceOrder = ['gemini', 'openai', 'anthropic'];
-    const serviceFunctions = { gemini: callGemini, openai: callOpenAI, anthropic: callAnthropic };
+    const serviceFunctions = {
+        gemini: callGemini,
+        openai: callOpenAI,
+        anthropic: callAnthropic
+    };
     let lastError;
     for (const serviceName of serviceOrder) {
         const service = aiServices[serviceName];
@@ -214,7 +231,7 @@ async function generateReviewWithFallback(prompt) {
         }
         try {
             console.log(`Trying ${service.name}...`);
-            const result = await serviceFunctions[serviceName](prompt);
+            const result = await retryWithBackoff(() => serviceFunctions[serviceName](prompt));
             recordSuccess(serviceName);
             console.log(`Successfully generated review using ${service.name}`);
             return { result, service: service.name };
@@ -240,18 +257,18 @@ app.post('/review', async (req, res) => {
         const prompt = getPrompt(persona, code);
         const { result: reviewData, service } = await generateReviewWithFallback(prompt);
 
-        res.json({ 
+        res.json({
             review: reviewData.review,
             productionRisk: reviewData.productionRisk,
-            service: service 
+            service: service
         });
-
     } catch (error) {
         console.error("Error generating AI review:", error.message);
         res.status(503).json({ error: 'All AI services are currently unavailable. Please try again later.' });
     }
 });
 
+// --- Server Startup ---
 app.listen(port, () => {
     console.log(`GitWit backend server listening on http://localhost:${port}`);
     console.log('Available AI services:');
