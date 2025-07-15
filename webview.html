@@ -1,224 +1,339 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GitWit Review</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
-        body { background-color: transparent; color: var(--vscode-editor-foreground); font-family: var(--vscode-font-family); }
-        .review-card { border-left: 4px solid #4f46e5; }
-        .blinking-cursor {
-            animation: blink 1s step-end infinite;
+      body {
+        background-color: transparent;
+        color: var(--vscode-editor-foreground);
+        font-family: var(--vscode-font-family);
+      }
+      .review-card {
+        border-left: 4px solid #4f46e5;
+      }
+      .blinking-cursor {
+        animation: blink 1s step-end infinite;
+      }
+      @keyframes blink {
+        50% {
+          border-right-color: var(--vscode-editor-foreground);
         }
-        @keyframes blink {
-            from, to { border-right-color: transparent; }
-            50% { border-right-color: var(--vscode-editor-foreground); }
-        }
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
     <div id="root"></div>
-    <script> const vscode = acquireVsCodeApi(); </script>
+    <script>
+      const vscode = acquireVsCodeApi();
+    </script>
 
     <script type="text/babel">
-        const Header = () => (
-            <header className="text-center">
-                <h1 className="text-2xl font-bold">GitWit</h1>
-                <p className="text-sm text-gray-400">Your AI Code Review Companion</p>
-            </header>
-        );
+      const Header = () => (
+        <header className="text-center">
+          <h1 className="text-2xl font-bold">GitWit</h1>
+          <p className="text-sm text-gray-400">Your AI Code Review Companion</p>
+        </header>
+      );
 
-        const CodeInput = ({ code, setCode, isLoading }) => (
-            <div className="space-y-2">
-                <label htmlFor="codeInput" className="block text-sm font-medium">Paste Your Code Snippet</label>
-                <textarea id="codeInput" rows="10" className="w-full p-2 border border-gray-600 rounded-md bg-gray-800 text-gray-200 font-mono text-sm" placeholder="function hello() { ... }" value={code} onChange={(e) => setCode(e.target.value)} disabled={isLoading}></textarea>
-            </div>
-        );
-
-        const PersonaSelector = ({ persona, setPersona, isLoading }) => (
-            <div className="space-y-2">
-                <label htmlFor="persona" className="block text-sm font-medium">Choose a Reviewer Persona</label>
-                <select id="persona" className="w-full p-2 border border-gray-600 rounded-md bg-gray-800 text-gray-200" value={persona} onChange={(e) => setPersona(e.target.value)} disabled={isLoading}>
-                    <option>Strict Tech Lead</option>
-                    <option>Supportive Mentor</option>
-                    <option>Sarcastic Reviewer</option>
-                    <option>Code Poet</option>
-                    <option>Paranoid Security Engineer</option>
-                </select>
-            </div>
-        );
-
-        const ReviewSection = ({ review }) => (
-            <div className="space-y-4 pt-4 border-t border-gray-700">
-                <h2 className="text-lg font-semibold">Review</h2>
-                <div className="p-4 bg-gray-800 rounded-md space-y-3">
-                    <div className="p-3 bg-gray-700 rounded-md review-card">
-                        <h3 className="font-bold text-indigo-300">Summary</h3>
-                        <p className="text-gray-300">{review.summary}</p>
-                    </div>
-                    <div className="p-3 bg-gray-700 rounded-md review-card">
-                        <h3 className="font-bold text-indigo-300">Critique</h3>
-                        <p className="text-gray-300">{review.critique}</p>
-                    </div>
-                    <div className="p-3 bg-gray-700 rounded-md review-card">
-                        <h3 className="font-bold text-indigo-300">Suggestions</h3>
-                        <p className="text-gray-300">{review.suggestions}</p>
-                    </div>
+      const SettingsSection = ({ apiKey, setApiKey, handleSaveKey }) => {
+        const [isOpen, setIsOpen] = React.useState(false);
+        return (
+          <div className="pt-4 border-t border-gray-700">
+            <button
+              onClick={() => setIsOpen(!isOpen)}
+              className="w-full text-left font-semibold text-lg hover:text-indigo-400 transition-colors"
+            >
+              Settings {isOpen ? "▲" : "▼"}
+            </button>
+            {isOpen && (
+              <div className="mt-4 p-4 bg-gray-800 rounded-md space-y-3">
+                <p className="text-sm text-gray-400">
+                  To avoid rate limits and ensure consistent access, you can
+                  provide your own Google AI API key. GitWit will store this
+                  securely in your local VS Code settings.
+                </p>
+                <div>
+                  <label
+                    htmlFor="apiKeyInput"
+                    className="block text-sm font-medium mb-1"
+                  >
+                    Your Gemini API Key
+                  </label>
+                  <div className="flex space-x-2">
+                    <input
+                      type="password"
+                      id="apiKeyInput"
+                      className="flex-grow p-2 border border-gray-600 rounded-md bg-gray-900 text-gray-200"
+                      placeholder="Enter your API key"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                    />
+                    <button
+                      className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md"
+                      onClick={handleSaveKey}
+                    >
+                      Save
+                    </button>
+                  </div>
                 </div>
-            </div>
+              </div>
+            )}
+          </div>
         );
+      };
 
-        const ProductionRiskSection = ({ risks }) => (
-            <div className="space-y-4 pt-4 border-t border-gray-700">
-                <h2 className="text-lg font-semibold">Production Risk Watch</h2>
-                <ul className="p-4 bg-gray-800 rounded-md space-y-2">
-                    {risks.map((item, index) => (
-                        <li key={index} className="flex items-start">
-                            <span className="mr-2">{item.isSafe ? '✅' : '⚠️'}</span>
-                            <span>{item.risk}</span>
-                        </li>
-                    ))}
-                </ul>
+      const CodeInput = ({ code, setCode, isLoading }) => (
+        <div className="space-y-2">
+          <label htmlFor="codeInput" className="block text-sm font-medium">
+            Paste Your Code Snippet
+          </label>
+          <textarea
+            id="codeInput"
+            rows="10"
+            className="w-full p-2 border border-gray-600 rounded-md bg-gray-800 text-gray-200 font-mono text-sm"
+            placeholder="function hello() { ... }"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            disabled={isLoading}
+          ></textarea>
+        </div>
+      );
+      const PersonaSelector = ({ persona, setPersona, isLoading }) => (
+        <div className="space-y-2">
+          <label htmlFor="persona" className="block text-sm font-medium">
+            Choose a Reviewer Persona
+          </label>
+          <select
+            id="persona"
+            className="w-full p-2 border border-gray-600 rounded-md bg-gray-800 text-gray-200"
+            value={persona}
+            onChange={(e) => setPersona(e.target.value)}
+            disabled={isLoading}
+          >
+            <option>Strict Tech Lead</option>
+            <option>Supportive Mentor</option>
+            <option>Sarcastic Reviewer</option>
+            <option>Code Poet</option>
+            <option>Paranoid Security Engineer</option>
+          </select>
+        </div>
+      );
+      const ReviewSection = ({ review }) => (
+        <div className="space-y-4 pt-4 border-t border-gray-700">
+          <h2 className="text-lg font-semibold">Review</h2>
+          <div className="p-4 bg-gray-800 rounded-md space-y-3">
+            <div className="p-3 bg-gray-700 rounded-md review-card">
+              <h3 className="font-bold text-indigo-300">Summary</h3>
+              <p className="text-gray-300">{review.summary}</p>
             </div>
-        );
-
-        const DocstringSection = ({ docstring }) => (
-            <div className="space-y-4 pt-4 border-t border-gray-700">
-                <h2 className="text-lg font-semibold">Generated Docstring</h2>
-                <div className="p-4 bg-gray-800 rounded-md">
-                    <pre className="text-gray-300 whitespace-pre-wrap font-mono text-sm">
-                        <code>{docstring}</code>
-                    </pre>
-                </div>
+            <div className="p-3 bg-gray-700 rounded-md review-card">
+              <h3 className="font-bold text-indigo-300">Critique</h3>
+              <p className="text-gray-300">{review.critique}</p>
             </div>
+            <div className="p-3 bg-gray-700 rounded-md review-card">
+              <h3 className="font-bold text-indigo-300">Suggestions</h3>
+              <p className="text-gray-300">{review.suggestions}</p>
+            </div>
+          </div>
+        </div>
+      );
+      const ProductionRiskSection = ({ risks }) => (
+        <div className="space-y-4 pt-4 border-t border-gray-700">
+          <h2 className="text-lg font-semibold">Production Risk Watch</h2>
+          <ul className="p-4 bg-gray-800 rounded-md space-y-2">
+            {risks.map((item, index) => (
+              <li key={index} className="flex items-start">
+                <span className="mr-2">{item.isSafe ? "✅" : "⚠️"}</span>
+                <span>{item.risk}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      );
+      const DocstringSection = ({ docstring }) => (
+        <div className="space-y-4 pt-4 border-t border-gray-700">
+          <h2 className="text-lg font-semibold">Generated Docstring</h2>
+          <div className="p-4 bg-gray-800 rounded-md">
+            <pre className="text-gray-300 whitespace-pre-wrap font-mono text-sm">
+              <code>{docstring}</code>
+            </pre>
+          </div>
+        </div>
+      );
+
+      function App() {
+        const [code, setCode] = React.useState("");
+        const [persona, setPersona] = React.useState("Strict Tech Lead");
+        const [review, setReview] = React.useState(null);
+        const [productionRisk, setProductionRisk] = React.useState([]);
+        const [isLoading, setIsLoading] = React.useState(false);
+        const [loadingMessage, setLoadingMessage] = React.useState(
+          "Your code review will appear here..."
         );
+        const [docstring, setDocstring] = React.useState("");
+        const [activeTask, setActiveTask] = React.useState("");
+        const [apiKey, setApiKey] = React.useState("");
 
-        function App() {
-            const [code, setCode] = React.useState('');
-            const [persona, setPersona] = React.useState('Strict Tech Lead');
-            const [review, setReview] = React.useState(null);
-            const [productionRisk, setProductionRisk] = React.useState([]);
-            const [isLoading, setIsLoading] = React.useState(false);
-            const [loadingMessage, setLoadingMessage] = React.useState('Your code review will appear here...');
-            const [docstring, setDocstring] = React.useState('');
-            const [activeTask, setActiveTask] = React.useState('');
+        React.useEffect(() => {
+          const handleMessage = (event) => {
+            const message = event.data;
+            switch (message.command) {
+              case "displayReview":
+                setReview(message.review);
+                setProductionRisk(message.productionRisk || []);
+                setIsLoading(false);
+                break;
+              case "displayDocstring":
+                setDocstring(message.docstring);
+                setIsLoading(false);
+                break;
+              case "setApiKey":
+                setApiKey(message.apiKey || "");
+                break;
+            }
+          };
+          window.addEventListener("message", handleMessage);
+          vscode.postMessage({ command: "getApiKey" });
+          return () => window.removeEventListener("message", handleMessage);
+        }, []);
 
-            React.useEffect(() => {
-                const handleMessage = (event) => {
-                    const message = event.data;
-                    if (message.command === 'displayReview') {
-                        setReview(message.review);
-                        setProductionRisk(message.productionRisk || []);
-                        setIsLoading(false);
-                    }
-                    if (message.command === 'displayDocstring') {
-                        setDocstring(message.docstring);
-                        setIsLoading(false);
-                    }
-                };
-                window.addEventListener('message', handleMessage);
-                return () => window.removeEventListener('message', handleMessage);
-            }, []);
+        React.useEffect(() => {
+          let interval;
+          if (isLoading) {
+            const messages = [
+              "Sending code to the AI...",
+              "Waking up the reviewer...",
+              "The AI is thinking...",
+              "Analyzing for production risks...",
+              "Formatting the response...",
+              "Almost there...",
+            ];
+            let messageIndex = 0;
+            setLoadingMessage(messages[messageIndex]);
+            interval = setInterval(() => {
+              messageIndex = (messageIndex + 1) % messages.length;
+              setLoadingMessage(messages[messageIndex]);
+            }, 2000);
+          } else {
+            setLoadingMessage("Your code review will appear here...");
+          }
+          return () => clearInterval(interval);
+        }, [isLoading]);
 
-            React.useEffect(() => {
-                let interval;
-                if (isLoading) {
-                    const messages = [
-                        "Sending code to the AI...",
-                        "Waking up the reviewer...",
-                        "The AI is thinking...",
-                        "Analyzing for production risks...",
-                        "Formatting the response...",
-                        "Almost there..."
-                    ];
-                    let messageIndex = 0;
-                    setLoadingMessage(messages[messageIndex]);
-                    interval = setInterval(() => {
-                        messageIndex = (messageIndex + 1) % messages.length;
-                        setLoadingMessage(messages[messageIndex]);
-                    }, 2000);
-                } else {
-                    setLoadingMessage('Your code review will appear here...');
-                }
-                return () => clearInterval(interval);
-            }, [isLoading]);
+        const handleReviewClick = () => {
+          setIsLoading(true);
+          setActiveTask("review");
+          setReview(null);
+          setProductionRisk([]);
+          setDocstring("");
+          vscode.postMessage({ command: "review", code, persona });
+        };
+        const handleGenerateDocstringClick = () => {
+          setIsLoading(true);
+          setActiveTask("docstring");
+          setReview(null);
+          setProductionRisk([]);
+          setDocstring("");
+          vscode.postMessage({ command: "generateDocstring", code });
+        };
+        const handleCopyClick = () => {
+          if (!review) return;
+          let md = `## GitWit Review (via ${persona})\n\n### Summary\n> ${review.summary}\n\n### Critique\n> ${review.critique}\n\n### Suggestions\n> ${review.suggestions}\n\n`;
+          if (productionRisk.length > 0) {
+            md += `### 🚨 Production Risk Watch\n`;
+            productionRisk.forEach((item) => {
+              md += `- ${item.isSafe ? "✅" : "⚠️"} ${item.risk}\n`;
+            });
+          }
+          vscode.postMessage({ command: "copyToClipboard", text: md });
+        };
+        const handleSaveKey = () => {
+          vscode.postMessage({ command: "saveApiKey", apiKey: apiKey });
+        };
 
+        return (
+          <div className="p-4 space-y-6">
+            <Header />
+            <CodeInput code={code} setCode={setCode} isLoading={isLoading} />
+            <PersonaSelector
+              persona={persona}
+              setPersona={setPersona}
+              isLoading={isLoading}
+            />
 
-            const handleReviewClick = () => {
-                setIsLoading(true);
-                setActiveTask('review');
-                setReview(null);
-                setProductionRisk([]);
-                setDocstring('');
-                vscode.postMessage({ command: 'review', code, persona });
-            };
-            
-            const handleGenerateDocstringClick = () => {
-                setIsLoading(true);
-                setActiveTask('docstring');
-                setReview(null);
-                setProductionRisk([]);
-                setDocstring('');
-                vscode.postMessage({ command: 'generateDocstring', code });
-            };
-            
-            const handleCopyClick = () => {
-                if (!review) return;
-                let md = `## GitWit Review (via ${persona})\n\n### Summary\n> ${review.summary}\n\n### Critique\n> ${review.critique}\n\n### Suggestions\n> ${review.suggestions}\n\n`;
-                if (productionRisk.length > 0) {
-                    md += `### 🚨 Production Risk Watch\n`;
-                    productionRisk.forEach(item => { md += `- ${item.isSafe ? '✅' : '⚠️'} ${item.risk}\n`; });
-                }
-                vscode.postMessage({ command: 'copyToClipboard', text: md });
-            };
+            <div className="flex space-x-2">
+              <button
+                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition-colors disabled:bg-gray-500"
+                onClick={handleReviewClick}
+                disabled={isLoading}
+              >
+                {isLoading && activeTask === "review"
+                  ? "Getting Review..."
+                  : "Get Review"}
+              </button>
+              <button
+                className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md transition-colors disabled:bg-gray-500"
+                onClick={handleGenerateDocstringClick}
+                disabled={isLoading}
+              >
+                {isLoading && activeTask === "docstring"
+                  ? "Generating..."
+                  : "Generate Docstring"}
+              </button>
+            </div>
 
-            return (
-                <div className="p-4 space-y-6">
-                    <Header />
-                    <CodeInput code={code} setCode={setCode} isLoading={isLoading} />
-                    <PersonaSelector persona={persona} setPersona={setPersona} isLoading={isLoading} />
-                    
-                    <div className="flex space-x-2">
-                        <button className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition-colors disabled:bg-gray-500" onClick={handleReviewClick} disabled={isLoading}>
-                            {isLoading && activeTask === 'review' ? 'Getting Review...' : 'Get Review'}
-                        </button>
-                        <button className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md transition-colors disabled:bg-gray-500" onClick={handleGenerateDocstringClick} disabled={isLoading}>
-                             {isLoading && activeTask === 'docstring' ? 'Generating...' : 'Generate Docstring'}
-                        </button>
-                    </div>
-                    
-                    {review && <ReviewSection review={review} />}
-                    {productionRisk.length > 0 && <ProductionRiskSection risks={productionRisk} />}
-                    {docstring && <DocstringSection docstring={docstring} />}
-                    
-                    {review && (
-                        <div className="pt-4 border-t border-gray-700">
-                            <button className="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-md transition-colors" onClick={handleCopyClick}>
-                                Copy Review as Markdown
-                            </button>
-                        </div>
-                    )}
+            {review && <ReviewSection review={review} />}
+            {productionRisk.length > 0 && (
+              <ProductionRiskSection risks={productionRisk} />
+            )}
+            {docstring && <DocstringSection docstring={docstring} />}
 
-                    {!review && !docstring && (
-                         <div className="space-y-4 pt-4 border-t border-gray-700 text-center">
-                            <p className="text-gray-400 italic">
-                                <span className={isLoading ? "inline-block border-r-2 border-transparent blinking-cursor pr-1" : ""}>
-                                    {loadingMessage}
-                                </span>
-                            </p>
-                         </div>
-                    )}
-                </div>
-            );
-        }
+            {review && (
+              <div className="pt-4 border-t border-gray-700">
+                <button
+                  className="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-md transition-colors"
+                  onClick={handleCopyClick}
+                >
+                  Copy Review as Markdown
+                </button>
+              </div>
+            )}
 
-        const container = document.getElementById('root');
-        const root = ReactDOM.createRoot(container);
-        root.render(<App />);
+            {!review && !docstring && !isLoading && (
+              <div className="space-y-4 pt-4 border-t border-gray-700 text-center">
+                <p className="text-gray-400 italic">
+                  Your code review will appear here...
+                </p>
+              </div>
+            )}
+            {isLoading && (
+              <div className="space-y-4 pt-4 border-t border-gray-700 text-center">
+                <p className="text-gray-400 italic">
+                  <span className="inline-block border-r-2 border-transparent blinking-cursor pr-1">
+                    {loadingMessage}
+                  </span>
+                </p>
+              </div>
+            )}
+
+            <SettingsSection
+              apiKey={apiKey}
+              setApiKey={setApiKey}
+              handleSaveKey={handleSaveKey}
+            />
+          </div>
+        );
+      }
+
+      const container = document.getElementById("root");
+      const root = ReactDOM.createRoot(container);
+      root.render(<App />);
     </script>
-</body>
+  </body>
 </html>

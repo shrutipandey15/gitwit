@@ -1,106 +1,129 @@
 /**
  * GitWit - extension.ts
- * This commit adds the logic to handle the 'generateDocstring' command.
+ * This commit adds the ability for users to provide their own API key.
  */
 
-import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
-import fetch from 'node-fetch';
+import * as vscode from "vscode";
+import * as fs from "fs";
+import * as path from "path";
+import fetch from "node-fetch";
 
 export function activate(context: vscode.ExtensionContext) {
+  console.log('Congratulations, your extension "gitwit" is now active!');
 
-    console.log('Congratulations, your extension "gitwit" is now active!');
+  let disposable = vscode.commands.registerCommand("gitwit.start", () => {
+    const panel = vscode.window.createWebviewPanel(
+      "gitwitPanel",
+      "GitWit Review",
+      vscode.ViewColumn.Beside,
+      {
+        enableScripts: true,
+        localResourceRoots: [context.extensionUri],
+      }
+    );
 
-    let disposable = vscode.commands.registerCommand('gitwit.start', () => {
-        const panel = vscode.window.createWebviewPanel(
-            'gitwitPanel',
-            'GitWit Review',
-            vscode.ViewColumn.Beside,
-            {
-                enableScripts: true,
-                localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'out')]
+    panel.webview.html = getWebviewContent(context);
+
+    panel.webview.onDidReceiveMessage(
+      async (message) => {
+        const config = vscode.workspace.getConfiguration("gitwit");
+
+        switch (message.command) {
+          case "getApiKey":
+            panel.webview.postMessage({
+              command: "setApiKey",
+              apiKey: config.get("apiKey"),
+            });
+            return;
+
+          case "saveApiKey":
+            try {
+              await config.update(
+                "apiKey",
+                message.apiKey,
+                vscode.ConfigurationTarget.Global
+              );
+              vscode.window.showInformationMessage(
+                "GitWit API Key saved successfully!"
+              );
+            } catch (error) {
+              console.error("Failed to save API key:", error);
+              vscode.window.showErrorMessage(
+                "Could not save the API key. Please check the developer console for errors."
+              );
             }
-        );
+            return;
 
-        panel.webview.html = getWebviewContent(context);
+          case "review":
+          case "generateDocstring":
+            const userApiKey = config.get("apiKey");
+            const endpoint =
+              message.command === "review" ? "review" : "generate-docstring";
+            const body = {
+              code: message.code,
+              persona: message.persona,
+              apiKey: userApiKey,
+            };
 
-        panel.webview.onDidReceiveMessage(
-            async message => {
-                switch (message.command) {
-                    case 'review':
-                        vscode.window.showInformationMessage('Sending code to GitWit backend...');
+            vscode.window.showInformationMessage(
+              `Sending request to GitWit backend...`
+            );
 
-                        try {
-                            const response = await fetch('http://localhost:3001/review', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    code: message.code,
-                                    persona: message.persona
-                                }),
-                            });
-
-                            if (!response.ok) {
-                                throw new Error(`HTTP error! status: ${response.status}`);
-                            }
-
-                            const data = await response.json();
-                            panel.webview.postMessage({
-                                command: 'displayReview',
-                                review: data.review,
-                                productionRisk: data.productionRisk
-                            });
-
-                        } catch (error) {
-                            console.error('Error calling backend:', error);
-                            vscode.window.showErrorMessage('Failed to get review from backend. Is the server running?');
-                        }
-                        return;
-                        
-                    case 'copyToClipboard':
-                        if (message.text) {
-                            await vscode.env.clipboard.writeText(message.text);
-                            vscode.window.showInformationMessage('Review copied to clipboard!');
-                        }
-                        return;
-
-                    case 'generateDocstring':
-                        vscode.window.showInformationMessage('Generating docstring with GitWit...');
-                        try {
-                            const response = await fetch('http://localhost:3001/generate-docstring', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ code: message.code }),
-                            });
-                            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                            
-                            const data = await response.json();
-
-                            panel.webview.postMessage({
-                                command: 'displayDocstring',
-                                docstring: data.docstring
-                            });
-
-                        } catch (error) {
-                            console.error('Error calling docstring backend:', error);
-                            vscode.window.showErrorMessage('Failed to generate docstring.');
-                        }
-                        return;
+            try {
+              const response = await fetch(
+                `http://localhost:3001/${endpoint}`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(body),
                 }
-            },
-            undefined,
-            context.subscriptions
-        );
-    });
+              );
 
-    context.subscriptions.push(disposable);
+              if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(
+                  errorData.error || `HTTP error! status: ${response.status}`
+                );
+              }
+
+              const data = await response.json();
+              const command =
+                message.command === "review"
+                  ? "displayReview"
+                  : "displayDocstring";
+
+              panel.webview.postMessage({ command, ...data });
+            } catch (error) {
+              console.error(`Error calling ${endpoint} backend:`, error);
+              console.error("Error calling backend:", error);
+              vscode.window.showErrorMessage(
+                "Failed to get review from backend. Is the server running?"
+              );
+            }
+            return;
+
+          case "copyToClipboard":
+            if (message.text) {
+              await vscode.env.clipboard.writeText(message.text);
+              vscode.window.showInformationMessage(
+                "Review copied to clipboard!"
+              );
+            }
+            return;
+        }
+      },
+      undefined,
+      context.subscriptions
+    );
+  });
+
+  context.subscriptions.push(disposable);
 }
 
 export function deactivate() {}
 
 function getWebviewContent(context: vscode.ExtensionContext): string {
-    const webviewHtmlPath = vscode.Uri.joinPath(context.extensionUri, 'webview.html');
-    const htmlContent = fs.readFileSync(webviewHtmlPath.fsPath, 'utf8');
-    return htmlContent;
+  const webviewHtmlPath = path.join(context.extensionPath, "webview.html");
+  const htmlContent = fs.readFileSync(webviewHtmlPath, "utf8");
+  return htmlContent;
 }

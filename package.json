@@ -20,7 +20,17 @@
         "title": "GitWit: Start Review",
         "category": "GitWit"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "GitWit",
+      "properties": {
+        "gitwit.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Your personal Google AI API key for GitWit to use."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

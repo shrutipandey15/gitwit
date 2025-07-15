@@ -2,8 +2,9 @@
  * GitWit - backend/server.js
  * This commit adds the '/generate-docstring' endpoint and logic,
  * and applies the resilient retry/fallback pattern to it.
+ * It also includes an endpoint to update API keys.
  *
- * @version 1.2.1
+ * @version 1.2.2
  * @author Shruti Pandey
  * @license MIT
  */
@@ -12,6 +13,8 @@ const express = require('express');
 const cors = require('cors');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 const port = 3001;
@@ -45,6 +48,42 @@ const circuitBreakers = {
     openai: { failures: 0, lastFailure: null, isOpen: false },
     anthropic: { failures: 0, lastFailure: null, isOpen: false }
 };
+
+/**
+ * Updates the .env file with new key-value pairs.
+ * @param {object} newKeys - An object where keys are env variable names and values are the new keys.
+ */
+function updateEnvFile(newKeys) {
+    const envFilePath = path.resolve(process.cwd(), '.env');
+    let envFileContent = '';
+
+    if (fs.existsSync(envFilePath)) {
+        envFileContent = fs.readFileSync(envFilePath, 'utf8');
+    }
+
+    let lines = envFileContent.split('\n');
+    const updatedKeys = { ...newKeys };
+
+    lines = lines.map(line => {
+        const [key] = line.split('=');
+        if (key in updatedKeys) {
+            const value = updatedKeys[key];
+            delete updatedKeys[key];
+            return `${key}=${value}`;
+        }
+        return line;
+    }).filter(line => line.trim() !== '');
+
+    for (const [key, value] of Object.entries(updatedKeys)) {
+        if (value) {
+            lines.push(`${key}=${value}`);
+        }
+    }
+
+    fs.writeFileSync(envFilePath, lines.join('\n'));
+    console.log('.env file updated.');
+}
+
 
 function getPrompt(persona, code) {
     const baseInstruction = `
@@ -128,8 +167,8 @@ function recordSuccess(serviceName) {
 }
 
 async function callGeminiForReview(prompt) {
-    const service = aiServices.gemini;
-    const model = service.client.getGenerativeModel({ model: service.model });
+    if (!aiServices.gemini.client) throw new Error("Gemini client not initialized.");
+    const model = aiServices.gemini.client.getGenerativeModel({ model: aiServices.gemini.model });
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const text = response.text();
@@ -137,8 +176,8 @@ async function callGeminiForReview(prompt) {
 }
 
 async function callGeminiForDocstring(prompt) {
-    const service = aiServices.gemini;
-    const model = service.client.getGenerativeModel({ model: service.model });
+    if (!aiServices.gemini.client) throw new Error("Gemini client not initialized.");
+    const model = aiServices.gemini.client.getGenerativeModel({ model: aiServices.gemini.model });
     const result = await model.generateContent(prompt);
     const response = await result.response;
     return response.text();
@@ -162,8 +201,8 @@ async function generateWithFallback(prompt, primaryServiceFunction) {
     const serviceOrder = ['gemini', 'openai', 'anthropic'];
     const serviceFunctions = {
         gemini: primaryServiceFunction,
-        openai: primaryServiceFunction,
-        anthropic: primaryServiceFunction
+        openai: () => { throw new Error("OpenAI function not implemented"); },
+        anthropic: () => { throw new Error("Anthropic function not implemented"); }
     };
     let lastError;
     for (const serviceName of serviceOrder) {
@@ -214,6 +253,43 @@ app.post('/generate-docstring', async (req, res) => {
     } catch (error) {
         console.error("Error generating docstring:", error.message);
         res.status(503).json({ error: 'Failed to generate docstring from AI.' });
+    }
+});
+
+app.post('/api/keys', (req, res) => {
+    try {
+        const { geminiApiKey, openaiApiKey, anthropicApiKey } = req.body;
+        const keysToUpdate = {};
+
+        if (geminiApiKey) {
+            aiServices.gemini.client = new GoogleGenerativeAI(geminiApiKey);
+            aiServices.gemini.enabled = true;
+            keysToUpdate.GEMINI_API_KEY = geminiApiKey;
+            console.log('Gemini API Key updated and client re-initialized.');
+        }
+
+        if (openaiApiKey) {
+            aiServices.openai.apiKey = openaiApiKey;
+            aiServices.openai.enabled = true;
+            keysToUpdate.OPENAI_API_KEY = openaiApiKey;
+            console.log('OpenAI API Key updated.');
+        }
+
+        if (anthropicApiKey) {
+            aiServices.anthropic.apiKey = anthropicApiKey;
+            aiServices.anthropic.enabled = true;
+            keysToUpdate.ANTHROPIC_API_KEY = anthropicApiKey;
+            console.log('Anthropic API Key updated.');
+        }
+
+        if (Object.keys(keysToUpdate).length > 0) {
+            updateEnvFile(keysToUpdate);
+        }
+
+        res.status(200).json({ message: 'API keys updated successfully.' });
+    } catch (error) {
+        console.error("Failed to update API keys:", error);
+        res.status(500).json({ error: 'An internal error occurred while updating API keys.' });
     }
 });
 
