@@ -1,12 +1,21 @@
 {
   "name": "gitwit",
-  "displayName": "GitWit",
-  "description": "An AI code reviewer with personality.",
-  "version": "0.0.1",
+  "displayName": "GitWit - AI Code Review",
+  "description": "An AI-powered code reviewer with multiple personalities to help you improve your code quality, style, and security.",
+  "version": "1.0.0",
+  "publisher": "Shruti Pandey",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shrutipandey15/gitwit.git"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
+    "Machine Learning",
+    "Programming Languages",
+    "Education",
     "Other"
   ],
   "activationEvents": [
