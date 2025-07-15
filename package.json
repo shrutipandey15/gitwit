@@ -3,7 +3,7 @@
   "displayName": "GitWit - AI Code Review",
   "description": "An AI-powered code reviewer with multiple personalities to help you improve your code quality, style, and security.",
   "version": "1.0.0",
-  "publisher": "Shruti Pandey",
+  "publisher": "shruti-pandey",
   "icon": "icon.png",
   "repository": {
     "type": "git",
