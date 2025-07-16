@@ -1,71 +1,49 @@
-# gitwit README
+# GitWit: Your AI Code Review Companion
 
-This is the README for your extension "gitwit". After writing up a brief description, we recommend including the following sections.
+GitWit is a VS Code extension that acts as an AI-powered code reviewer, helping you improve your code's quality, style, and security. With multiple reviewer personas, you can get tailored feedback, from a strict architectural analysis to supportive mentorship.
 
-## Features
+## How It Works
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+GitWit's architecture consists of a VS Code extension that communicates with a backend Node.js server to provide AI-powered code analysis.
 
-For example if there is an image subfolder under your extension project workspace:
+## GitWit in Action
+![GitWit Demo](https://raw.githubusercontent.com/shrutipandey15/gitwit/main/final_demo.gif)
+### The VS Code Extension
 
-\!\[feature X\]\(images/feature-x.png\)
+The frontend of the extension is built with TypeScript and manages the user interaction within VS Code.
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+* **Activation**: The extension activates when a user runs the `gitwit.start` command from the command palette.
+* **Webview Interface**: Upon activation, GitWit opens a webview panel titled "GitWit Review". This interface, built with React and Tailwind CSS, allows you to paste code, select a reviewer persona, and view the feedback.
+* **API Key Management**: You can provide your own Google AI API key, which the extension saves into your VS Code configuration. The extension retrieves this key to use for backend requests.
+* **Backend Communication**: The extension sends the user's code and selected persona to a local backend server running on `http://localhost:3001`. It then receives the generated review or docstring and displays it in the webview.
 
-## Requirements
+### The Backend Server
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+The backend is a Node.js application using Express.js to handle the core logic and AI communication.
 
-## Extension Settings
+* **API Endpoints**: The server exposes several endpoints:
+    * `POST /review`: Accepts code and a persona to generate a code review.
+    * `POST /generate-docstring`: Takes a code snippet and returns a generated docstring.
+    * `POST /api/keys`: Allows for updating the API keys for the AI services.
+* **AI Service Integration**: The backend is primarily configured to use the Google Gemini model (`gemini-1.5-flash`) for generating content. It is also structured to potentially support OpenAI and Anthropic as fallback options.
+* **Prompt Engineering**: Based on the selected persona (e.g., "Strict Tech Lead", "Supportive Mentor", "Paranoid Security Engineer"), the server constructs a specific prompt to guide the AI's response format and focus. The AI is instructed to return a pure JSON object with `review` and `productionRisk` keys.
+* **Resilience and Fallbacks**: To ensure reliability, the backend implements a **circuit breaker pattern**. If an AI service fails more than a set threshold (3 failures), the circuit breaker trips, and the service is bypassed for a timeout period (60 seconds). It also employs a **retry-with-backoff** mechanism for retryable API errors.
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
+## Key Features
 
-For example:
+* **Multiple Reviewer Personas**: Choose from a variety of personas like "Strict Tech Lead," "Supportive Mentor," "Sarcastic Reviewer," "Code Poet," and "Paranoid Security Engineer" to get feedback in a specific style.
+* **In-Depth Code Analysis**: Receive a comprehensive review that includes a "summary," "critique," and "suggestions" for your code.
+* **Production Risk Assessment**: The AI analyzes potential production risks, indicating whether each identified risk is considered safe or not.
+* **Docstring Generation**: Automatically create professional docstrings for your code snippets.
+* **Copy as Markdown**: The extension provides a button to copy the full review to your clipboard in a Markdown format, ready to be pasted into pull requests or other documents.
+* **Bring Your Own API Key**: Users can provide their own Gemini API key through the settings in the webview to ensure consistent access.
 
-This extension contributes the following settings:
+## Getting Started
 
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
-
-## Known Issues
-
-Calling out known issues can help limit users opening duplicate issues against your extension.
-
-## Release Notes
-
-Users appreciate release notes as you update your extension.
-
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
-
----
-
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+1.  **Install the GitWit extension** from the VS Code Marketplace.
+2.  **Run the backend server** as described in the project's repository. The extension expects the server to be running on `http://localhost:3001`.
+3.  **Open the command palette** (`Ctrl+Shift+P` or `Cmd+Shift+P`) and run the `GitWit: Start Review` command.
+4.  Optionally, go to the **Settings** section within the GitWit panel to save your Google AI API key.
+5.  **Paste your code** into the text area.
+6.  **Choose a reviewer persona** from the dropdown menu.
+7.  Click **"Get Review"** or **"Generate Docstring"** to receive AI-powered feedback.
