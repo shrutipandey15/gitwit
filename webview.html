@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GitWit Review</title>
+    <title>CodeCritter Review</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
@@ -36,7 +36,7 @@
     <script type="text/babel">
       const Header = () => (
         <header className="text-center">
-          <h1 className="text-2xl font-bold">GitWit</h1>
+          <h1 className="text-2xl font-bold">CodeCritter</h1>
           <p className="text-sm text-gray-400">Your AI Code Review Companion</p>
         </header>
       );
@@ -55,7 +55,7 @@
               <div className="mt-4 p-4 bg-gray-800 rounded-md space-y-3">
                 <p className="text-sm text-gray-400">
                   To avoid rate limits and ensure consistent access, you can
-                  provide your own Google AI API key. GitWit will store this
+                  provide your own Google AI API key. CodeCritter will store this
                   securely in your local VS Code settings.
                 </p>
                 <div>
@@ -244,7 +244,7 @@
         };
         const handleCopyClick = () => {
           if (!review) return;
-          let md = `## GitWit Review (via ${persona})\n\n### Summary\n> ${review.summary}\n\n### Critique\n> ${review.critique}\n\n### Suggestions\n> ${review.suggestions}\n\n`;
+          let md = `## CodeCritter Review (via ${persona})\n\n### Summary\n> ${review.summary}\n\n### Critique\n> ${review.critique}\n\n### Suggestions\n> ${review.suggestions}\n\n`;
           if (productionRisk.length > 0) {
             md += `### 🚨 Production Risk Watch\n`;
             productionRisk.forEach((item) => {

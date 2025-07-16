@@ -18,25 +18,33 @@
     "Education",
     "Other"
   ],
+  "keywords": [
+    "ai",
+    "code review",
+    "gemini",
+    "code quality",
+    "docstring",
+    "security"
+  ],
   "activationEvents": [
-    "onCommand:gitwit.start"
+    "onCommand:codecritter.start"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "gitwit.start",
-        "title": "GitWit: Start Review",
-        "category": "GitWit"
+        "command": "codecritter.start",
+        "title": "CodeCritter: Start Review",
+        "category": "CodeCritter"
       }
     ],
     "configuration": {
-      "title": "GitWit",
+      "title": "CodeCritter",
       "properties": {
-        "gitwit.apiKey": {
+        "codecritter.apiKey": {
           "type": "string",
           "default": "",
-          "description": "Your personal Google AI API key for GitWit to use."
+          "description": "Your personal Google AI API key for CodeCritter to use. Get one from https://makersuite.google.com/app/apikey"
         }
       }
     }
@@ -52,18 +60,15 @@
   "devDependencies": {
     "@types/mocha": "^10.0.6",
     "@types/node": "18.x",
-    "@types/node-fetch": "^2.6.11",
     "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^6.19.1",
     "@typescript-eslint/parser": "^6.19.1",
     "@vscode/test-cli": "^0.0.4",
     "@vscode/test-electron": "^2.3.9",
     "eslint": "^8.56.0",
-    "node-fetch": "^2.7.0",
     "typescript": "^5.3.3"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
-    "dotenv": "^17.2.0"
+    "@google/generative-ai": "^0.24.1"
   }
 }

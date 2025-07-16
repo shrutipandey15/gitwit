@@ -1,49 +1,180 @@
-# GitWit: Your AI Code Review Companion
+# CodeCritter: Your AI Code Review Companion
 
-GitWit is a VS Code extension that acts as an AI-powered code reviewer, helping you improve your code's quality, style, and security. With multiple reviewer personas, you can get tailored feedback, from a strict architectural analysis to supportive mentorship.
+CodeCritter is a VS Code extension that acts as an AI-powered code reviewer, helping you improve your code's quality, style, and security. With multiple reviewer personas, you can get tailored feedback, from a strict architectural analysis to supportive mentorship.
 
-## How It Works
+## 🎬 Demo
 
-GitWit's architecture consists of a VS Code extension that communicates with a backend Node.js server to provide AI-powered code analysis.
+![CodeCritter Demo](https://github.com/shrutipandey15/gitwit/blob/main/final_demo.gif?raw=true)
 
-## GitWit in Action
-![GitWit Demo](https://raw.githubusercontent.com/shrutipandey15/gitwit/main/final_demo.gif)
-### The VS Code Extension
+## ✨ Features
 
-The frontend of the extension is built with TypeScript and manages the user interaction within VS Code.
+- **🤖 AI-Powered Code Review**: Get comprehensive code analysis with summary, critique, and suggestions
+- **👥 Multiple Reviewer Personas**: Choose from 5 distinct personalities:
+  - **Strict Tech Lead** - Architectural focus and best practices
+  - **Supportive Mentor** - Encouraging feedback with learning opportunities
+  - **Sarcastic Reviewer** - Witty and direct feedback
+  - **Code Poet** - Artistic and elegant code suggestions
+  - **Paranoid Security Engineer** - Security-focused analysis
+- **🔒 Security Analysis**: Production risk assessment with safety indicators
+- **📝 Docstring Generation**: Auto-generate professional documentation
+- **📋 Copy to Clipboard**: Export reviews as Markdown for PRs
+- **🔑 Secure API Key Storage**: Your Gemini API key is stored locally in VS Code settings
 
-* **Activation**: The extension activates when a user runs the `gitwit.start` command from the command palette.
-* **Webview Interface**: Upon activation, GitWit opens a webview panel titled "GitWit Review". This interface, built with React and Tailwind CSS, allows you to paste code, select a reviewer persona, and view the feedback.
-* **API Key Management**: You can provide your own Google AI API key, which the extension saves into your VS Code configuration. The extension retrieves this key to use for backend requests.
-* **Backend Communication**: The extension sends the user's code and selected persona to a local backend server running on `http://localhost:3001`. It then receives the generated review or docstring and displays it in the webview.
+## 🚀 Quick Start
 
-### The Backend Server
+1. **Install the extension** from the VS Code Marketplace
+2. **Get a Gemini API key** from [Google AI Studio](https://makersuite.google.com/app/apikey)
+3. **Open Command Palette** (`Ctrl+Shift+P` or `Cmd+Shift+P`)
+4. **Run** `CodeCritter: Start Review`
+5. **Add your API key** in the Settings section
+6. **Paste your code** and get instant feedback!
 
-The backend is a Node.js application using Express.js to handle the core logic and AI communication.
+## 🛠️ How It Works
 
-* **API Endpoints**: The server exposes several endpoints:
-    * `POST /review`: Accepts code and a persona to generate a code review.
-    * `POST /generate-docstring`: Takes a code snippet and returns a generated docstring.
-    * `POST /api/keys`: Allows for updating the API keys for the AI services.
-* **AI Service Integration**: The backend is primarily configured to use the Google Gemini model (`gemini-1.5-flash`) for generating content. It is also structured to potentially support OpenAI and Anthropic as fallback options.
-* **Prompt Engineering**: Based on the selected persona (e.g., "Strict Tech Lead", "Supportive Mentor", "Paranoid Security Engineer"), the server constructs a specific prompt to guide the AI's response format and focus. The AI is instructed to return a pure JSON object with `review` and `productionRisk` keys.
-* **Resilience and Fallbacks**: To ensure reliability, the backend implements a **circuit breaker pattern**. If an AI service fails more than a set threshold (3 failures), the circuit breaker trips, and the service is bypassed for a timeout period (60 seconds). It also employs a **retry-with-backoff** mechanism for retryable API errors.
+CodeCritter is now a **standalone extension** that communicates directly with Google's Gemini AI API. No separate backend server needed!
 
-## Key Features
+### The Extension Architecture
 
-* **Multiple Reviewer Personas**: Choose from a variety of personas like "Strict Tech Lead," "Supportive Mentor," "Sarcastic Reviewer," "Code Poet," and "Paranoid Security Engineer" to get feedback in a specific style.
-* **In-Depth Code Analysis**: Receive a comprehensive review that includes a "summary," "critique," and "suggestions" for your code.
-* **Production Risk Assessment**: The AI analyzes potential production risks, indicating whether each identified risk is considered safe or not.
-* **Docstring Generation**: Automatically create professional docstrings for your code snippets.
-* **Copy as Markdown**: The extension provides a button to copy the full review to your clipboard in a Markdown format, ready to be pasted into pull requests or other documents.
-* **Bring Your Own API Key**: Users can provide their own Gemini API key through the settings in the webview to ensure consistent access.
+- **Direct API Integration**: The extension communicates directly with Gemini AI
+- **Circuit Breaker Pattern**: Handles API failures gracefully with automatic recovery
+- **Retry Logic**: Implements exponential backoff for reliable service
+- **Secure Storage**: API keys are stored securely in VS Code's configuration
 
-## Getting Started
+### Key Components
 
-1.  **Install the GitWit extension** from the VS Code Marketplace.
-2.  **Run the backend server** as described in the project's repository. The extension expects the server to be running on `http://localhost:3001`.
-3.  **Open the command palette** (`Ctrl+Shift+P` or `Cmd+Shift+P`) and run the `GitWit: Start Review` command.
-4.  Optionally, go to the **Settings** section within the GitWit panel to save your Google AI API key.
-5.  **Paste your code** into the text area.
-6.  **Choose a reviewer persona** from the dropdown menu.
-7.  Click **"Get Review"** or **"Generate Docstring"** to receive AI-powered feedback.
+1. **Webview Interface**: Modern React + Tailwind CSS UI
+2. **AI Service**: Direct integration with Google Gemini 1.5 Flash
+3. **Prompt Engineering**: Specialized prompts for each reviewer persona
+4. **Error Handling**: Robust error handling and user feedback
+
+## 🔧 Installation & Setup
+
+### Method 1: VS Code Marketplace (Recommended)
+1. Open VS Code
+2. Go to Extensions (`Ctrl+Shift+X`)
+3. Search for "GitWit"
+4. Click "Install"
+
+### Method 2: Manual Installation
+1. Download the `.vsix` file from releases
+2. Open VS Code
+3. Run `Extensions: Install from VSIX...` from Command Palette
+4. Select the downloaded file
+
+### Getting Your API Key
+1. Visit [Google AI Studio](https://makersuite.google.com/app/apikey)
+2. Sign in with your Google account
+3. Create a new API key
+4. Copy the key and paste it in GitWit's settings
+
+## 📖 Usage Guide
+
+### Basic Review Process
+1. **Open GitWit**: Use Command Palette → `CodeCritter: Start Review`
+2. **Add API Key**: Go to Settings section and save your Gemini API key
+3. **Paste Code**: Add your code snippet in the text area
+4. **Select Persona**: Choose your preferred reviewer style
+5. **Get Review**: Click "Get Review" for comprehensive analysis
+6. **Copy Results**: Use "Copy Review as Markdown" for documentation
+
+### Reviewer Personas Explained
+
+#### 🏗️ Strict Tech Lead
+- Focus on architecture and scalability
+- Emphasizes best practices and patterns
+- Identifies potential technical debt
+
+#### 🤝 Supportive Mentor
+- Encouraging and educational approach
+- Explains the "why" behind suggestions
+- Great for learning and improvement
+
+#### 😏 Sarcastic Reviewer
+- Witty and direct feedback
+- Points out obvious issues with humor
+- Keeps reviews entertaining
+
+#### 🎨 Code Poet
+- Focuses on code elegance and readability
+- Artistic approach to code structure
+- Emphasizes beautiful, clean code
+
+#### 🔒 Paranoid Security Engineer
+- Security-first analysis
+- Identifies vulnerabilities and risks
+- Focuses on production safety
+
+### Production Risk Assessment
+Each review includes a "Production Risk Watch" section that:
+- ✅ **Safe**: No production concerns
+- ⚠️ **Risk**: Potential production issues identified
+- Lists specific risks with safety indicators
+
+## 🔒 Privacy & Security
+
+- **Local Storage**: API keys are stored locally in VS Code settings
+- **No Data Collection**: GitWit doesn't collect or store your code
+- **Direct API Calls**: Your code is sent directly to Google's Gemini API
+- **Secure Transport**: All API calls use HTTPS encryption
+
+## 🛠️ Development
+
+### Building from Source
+```bash
+git clone https://github.com/shrutipandey15/gitwit.git
+cd gitwit
+npm install
+npm run compile
+```
+
+### Testing the Extension
+```bash
+npm run test
+```
+
+### Packaging
+```bash
+npm install -g vsce
+vsce package
+```
+
+## 🤝 Contributing
+
+I welcome contributions! Please see my [Contributing Guide](CONTRIBUTING.md) for details.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🆘 Support
+
+- **Issues**: Report bugs on [GitHub Issues](https://github.com/shrutipandey15/gitwit/issues)
+- **Discussions**: Ask questions in [GitHub Discussions](https://github.com/shrutipandey15/gitwit/discussions)
+- **Email**: Contact the maintainer at [email]
+
+## 🎯 Roadmap
+
+- [ ] Support for more AI providers (OpenAI, Claude)
+- [ ] Custom prompt templates
+- [ ] Integration with GitHub Pull Requests
+- [ ] Code quality metrics
+- [ ] Team collaboration features
+
+## 📊 Stats
+
+- **Languages Supported**: All programming languages
+- **AI Model**: Google Gemini 1.5 Flash
+- **VS Code Version**: 1.85.0+
+- **License**: MIT
+
+---
+
+Made with ❤️ by [Shruti Pandey](https://github.com/shrutipandey15)
+
+*CodeCritter - Making code reviews intelligent, one line at a time.*
