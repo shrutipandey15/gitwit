@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Backend Server Dependency**: Removed the requirement for a separate Node.js Express.js backend server
 - **Complex Setup Process**: Eliminated the need for users to run and maintain a separate backend service
 
+### Fixed
+- **Command Not Found Error**: Fixed a critical bug where the Start Review command would fail after the project was renamed.
+
 ### Technical Details
 - Migrated AI service calls from external backend to embedded extension logic
 - Integrated Circuit Breaker pattern and retry logic directly into the extension

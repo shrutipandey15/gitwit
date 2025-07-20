@@ -34,7 +34,7 @@
     "commands": [
       {
         "command": "codecritter.start",
-        "title": "CodeCritter: Start Review",
+        "title": "Start Review",
         "category": "CodeCritter"
       }
     ],

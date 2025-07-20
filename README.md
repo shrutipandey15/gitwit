@@ -52,7 +52,7 @@ CodeCritter is now a **standalone extension** that communicates directly with Go
 ### Method 1: VS Code Marketplace (Recommended)
 1. Open VS Code
 2. Go to Extensions (`Ctrl+Shift+X`)
-3. Search for "GitWit"
+3. Search for "COdedCritter"
 4. Click "Install"
 
 ### Method 2: Manual Installation
@@ -65,12 +65,12 @@ CodeCritter is now a **standalone extension** that communicates directly with Go
 1. Visit [Google AI Studio](https://makersuite.google.com/app/apikey)
 2. Sign in with your Google account
 3. Create a new API key
-4. Copy the key and paste it in GitWit's settings
+4. Copy the key and paste it in CodeCritter's settings
 
 ## 📖 Usage Guide
 
 ### Basic Review Process
-1. **Open GitWit**: Use Command Palette → `CodeCritter: Start Review`
+1. **Open COdeCritter**: Use Command Palette → `CodeCritter: Start Review`
 2. **Add API Key**: Go to Settings section and save your Gemini API key
 3. **Paste Code**: Add your code snippet in the text area
 4. **Select Persona**: Choose your preferred reviewer style
