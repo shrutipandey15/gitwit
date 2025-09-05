@@ -125,7 +125,41 @@ export function activate(context: vscode.ExtensionContext) {
               );
             }
             return;
+          case "analyzeForCommit":
+            try {
+              const userApiKey = config.get("apiKey") as string;
+              if (!userApiKey) {
+                vscode.window.showWarningMessage(
+                  "Please set your Gemini API key in the CodeCritter settings first."
+                );
+                return;
+              }
+              const analysis = await analyzeAndSuggestCommit(message.diff, userApiKey);
+              panel.webview.postMessage({
+                command: "displayCommitAnalysis",
+                analysis,
+              });
+            } catch (error) {
+              console.error("Error analyzing for commit:", error);
+              vscode.window.showErrorMessage(
+                `Failed to analyze for commit: ${error instanceof Error ? error.message : 'Unknown error'}`
+              );
+            }
+            return;
 
+          case "performCommit":
+            try {
+              const terminal = vscode.window.createTerminal("CodeCritter Commit");
+              terminal.sendText(`git commit -m "${message.message}"`);
+              terminal.show();
+              vscode.window.showInformationMessage("Commit successful!");
+            } catch (error) {
+              console.error("Failed to perform commit:", error);
+              vscode.window.showErrorMessage(
+                `Failed to perform commit: ${error instanceof Error ? error.message : 'Unknown error'}`
+              );
+            }
+            return;
           case "copyToClipboard":
             if (message.text) {
               await vscode.env.clipboard.writeText(message.text);
@@ -237,6 +271,23 @@ function getDocstringPrompt(code: string): string {
     \`\`\`
   `;
 }
+function getCommitMessagePrompt(diff: string): string {
+  return `
+    Analyze the following code diff and determine if it's ready to be committed.
+    - If it is ready, generate a conventional commit message in the format: <type>(<scope>): <short summary>.
+    - If it is not ready, explain why.
+
+    Respond in a pure JSON format. The JSON object should have two keys:
+    1. "ready": a boolean indicating if the code is ready to commit.
+    2. "commitMessage" or "reason": a string containing the commit message if ready, or the reason if not.
+
+    Diff:
+    \`\`\`
+    ${diff}
+    \`\`\`
+  `;
+}
+
 
 // JSON parsing and validation
 function parseAndValidateJsonResponse(rawText: string): any {
@@ -252,16 +303,25 @@ function parseAndValidateJsonResponse(rawText: string): any {
     throw new Error(`Failed to parse AI response as JSON: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
   
-  if (!parsedJson.review || !Array.isArray(parsedJson.productionRisk)) {
-    throw new Error("AI response is missing 'review' object or 'productionRisk' array.");
+  if (parsedJson.review && Array.isArray(parsedJson.productionRisk)) {
+    const requiredReviewKeys = ['summary', 'critique', 'suggestions'];
+    const missingKeys = requiredReviewKeys.filter(key => !(key in parsedJson.review));
+    if (missingKeys.length > 0) {
+      throw new Error(`AI response's 'review' object is missing keys: ${missingKeys.join(', ')}`);
+    }
+  } else if (!parsedJson.ready) {
+    if (!parsedJson.reason) {
+      throw new Error("AI response is missing 'reason' key.");
+    }
+  } else if (parsedJson.ready) {
+    if (!parsedJson.commitMessage) {
+      throw new Error("AI response is missing 'commitMessage' key.");
+    }
+  } else {
+    throw new Error("Invalid AI response format.");
   }
-  
-  const requiredReviewKeys = ['summary', 'critique', 'suggestions'];
-  const missingKeys = requiredReviewKeys.filter(key => !(key in parsedJson.review));
-  if (missingKeys.length > 0) {
-    throw new Error(`AI response's 'review' object is missing keys: ${missingKeys.join(', ')}`);
-  }
-  
+
+
   return parsedJson;
 }
 
@@ -303,6 +363,29 @@ async function generateDocstring(code: string, apiKey: string): Promise<string> 
       const result = await model.generateContent(prompt);
       const response = await result.response;
       return response.text();
+    });
+
+    recordSuccess();
+    return result;
+  } catch (error) {
+    recordFailure();
+    throw error;
+  }
+}
+async function analyzeAndSuggestCommit(diff: string, apiKey: string): Promise<any> {
+  if (isCircuitBreakerOpen()) {
+    throw new Error("Service is currently unavailable. Please try again later.");
+  }
+
+  try {
+    const prompt = getCommitMessagePrompt(diff);
+    const result = await retryWithBackoff(async () => {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+      return parseAndValidateJsonResponse(text);
     });
 
     recordSuccess();

@@ -2,7 +2,7 @@
   "name": "codecritter",
   "displayName": "CodeCritter - AI Code Review",
   "description": "An AI-powered code reviewer with multiple personalities to help you improve your code quality, style, and security.",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "publisher": "shruti-pandey",
   "icon": "icon.png",
   "repository": {
@@ -24,17 +24,23 @@
     "gemini",
     "code quality",
     "docstring",
-    "security"
+    "security",
+    "commit"
   ],
   "activationEvents": [
     "onCommand:codecritter.start"
   ],
-  "main": "./dist/extension.js",
+  "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "codecritter.start",
         "title": "Start Review",
+        "category": "CodeCritter"
+      },
+      {
+        "command": "codecritter.commit",
+        "title": "Analyze for Commit",
         "category": "CodeCritter"
       }
     ],
@@ -50,9 +56,10 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run webpack-prod",
-    "webpack-prod": "webpack --mode production",
-    "webpack-dev": "webpack --mode development --watch",
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "vscode-test"
   },
@@ -65,10 +72,7 @@
     "@vscode/test-cli": "^0.0.4",
     "@vscode/test-electron": "^2.3.9",
     "eslint": "^8.56.0",
-    "ts-loader": "^9.5.2",
-    "typescript": "^5.3.3",
-    "webpack": "^5.100.2",
-    "webpack-cli": "^6.0.1"
+    "typescript": "^5.3.3"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1"
