@@ -7,6 +7,18 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { exec } from 'child_process'; // Import the 'exec' function
+
+// Minimal interfaces for the VS Code Git extension API
+interface GitExtensionExports {
+    getAPI(version: 1): API;
+}
+interface API {
+    repositories: Repository[];
+}
+interface Repository {
+    // We are no longer using the diff methods from the API
+}
 
 // Circuit breaker configuration
 const CIRCUIT_BREAKER_THRESHOLD = 3;
@@ -24,8 +36,10 @@ const circuitBreaker: CircuitBreaker = {
   isOpen: false
 };
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
   console.log('CodeCritter extension is now active!');
+  
+  await setupProactiveCommitAssistant(context);
 
   let disposable = vscode.commands.registerCommand("codecritter.start", () => {
     const panel = vscode.window.createWebviewPanel(
@@ -125,41 +139,6 @@ export function activate(context: vscode.ExtensionContext) {
               );
             }
             return;
-          case "analyzeForCommit":
-            try {
-              const userApiKey = config.get("apiKey") as string;
-              if (!userApiKey) {
-                vscode.window.showWarningMessage(
-                  "Please set your Gemini API key in the CodeCritter settings first."
-                );
-                return;
-              }
-              const analysis = await analyzeAndSuggestCommit(message.diff, userApiKey);
-              panel.webview.postMessage({
-                command: "displayCommitAnalysis",
-                analysis,
-              });
-            } catch (error) {
-              console.error("Error analyzing for commit:", error);
-              vscode.window.showErrorMessage(
-                `Failed to analyze for commit: ${error instanceof Error ? error.message : 'Unknown error'}`
-              );
-            }
-            return;
-
-          case "performCommit":
-            try {
-              const terminal = vscode.window.createTerminal("CodeCritter Commit");
-              terminal.sendText(`git commit -m "${message.message}"`);
-              terminal.show();
-              vscode.window.showInformationMessage("Commit successful!");
-            } catch (error) {
-              console.error("Failed to perform commit:", error);
-              vscode.window.showErrorMessage(
-                `Failed to perform commit: ${error instanceof Error ? error.message : 'Unknown error'}`
-              );
-            }
-            return;
           case "copyToClipboard":
             if (message.text) {
               await vscode.env.clipboard.writeText(message.text);
@@ -177,6 +156,114 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(disposable);
 }
+
+// New helper function to execute a command and return its output
+function executeCommand(command: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!workspaceFolder) {
+            return resolve('');
+        }
+
+        exec(command, { cwd: workspaceFolder }, (error, stdout, stderr) => {
+            if (error) {
+                console.warn(`Warning executing command "${command}":`, stderr);
+                // Often, git diff returns an error code if there are no changes,
+                // so we resolve with an empty string instead of rejecting.
+                resolve(''); 
+                return;
+            }
+            resolve(stdout);
+        });
+    });
+}
+
+
+async function setupProactiveCommitAssistant(context: vscode.ExtensionContext) {
+    console.log("CodeCritter: Setting up proactive commit assistant...");
+
+    // We still need the Git extension to know a repository exists.
+    const gitExtension = vscode.extensions.getExtension<GitExtensionExports>('vscode.git');
+    if (!gitExtension) {
+        console.warn("CodeCritter: VS Code Git extension not found. Proactive commit assistant is disabled.");
+        return;
+    }
+    await gitExtension.activate();
+    console.log("CodeCritter: Git extension is active.");
+
+    context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(async (document) => {
+        console.log(`CodeCritter: File saved: ${document.uri.path}`);
+
+        if (document.uri.path.includes('/.git/')) {
+            console.log("CodeCritter: Save was inside .git directory, ignoring.");
+            return;
+        }
+        
+        const config = vscode.workspace.getConfiguration("codecritter");
+        const userApiKey = config.get("apiKey") as string;
+
+        if (!userApiKey) {
+            return; // Silently exit if no API key
+        }
+        
+        // Use our new reliable method to get the diff
+        const stagedDiff = await executeCommand('git diff --staged');
+        const unstagedDiff = await executeCommand('git diff');
+        const fullDiff = (stagedDiff + '\n' + unstagedDiff).trim();
+
+        if (!fullDiff) {
+            console.log("CodeCritter: No changes detected after running git diff command.");
+            return;
+        }
+        console.log("CodeCritter: Diff generated successfully via command line.");
+
+        try {
+            const analysis = await analyzeAndSuggestCommit(fullDiff, userApiKey);
+            if (analysis.ready) {
+                const persona = config.get("persona", "Strict Tech Lead");
+                const commitMessage = analysis.commitMessage;
+                
+                const message = getPopupMessage(persona, commitMessage);
+
+                const userChoice = await vscode.window.showInformationMessage(
+                    message,
+                    { modal: true },
+                    "Commit",
+                    "Cancel"
+                );
+
+                if (userChoice === "Commit") {
+                    const terminal = vscode.window.createTerminal("CodeCritter Commit");
+                    terminal.sendText(`git add . && git commit -m "${commitMessage}"`);
+                    terminal.show();
+                    vscode.window.showInformationMessage("Commit successful!");
+                }
+            } else {
+                console.log("CodeCritter: AI deemed changes NOT READY. Reason:", analysis.reason);
+            }
+        } catch (error) {
+            console.error("CodeCritter: Failed to analyze for commit on save:", error);
+        }
+    }));
+}
+
+function getPopupMessage(persona: string, commitMessage: string): string {
+    const formattedCommit = `\n\n"${commitMessage}"`;
+    switch (persona) {
+        case 'Supportive Mentor':
+            return `Looks like you've done some great work! I think it's ready to go. How about this commit message?${formattedCommit}`;
+        case 'Sarcastic Reviewer':
+            return `Oh, look, you actually finished something. I guess you can commit it. If you have to.${formattedCommit}`;
+        case 'Code Poet':
+            return `A beautiful composition of logic and form. This change is ready for the ages. Shall we use this message?${formattedCommit}`;
+        case 'Paranoid Security Engineer':
+            return `I've scanned for vulnerabilities and it seems... acceptable. For now. Commit with this message, and stay alert.${formattedCommit}`;
+        case 'Strict Tech Lead':
+        default:
+            return `This change meets our standards. It's ready for commit. Use the following message.${formattedCommit}`;
+    }
+}
+
 
 export function deactivate() {}
 
@@ -271,15 +358,19 @@ function getDocstringPrompt(code: string): string {
     \`\`\`
   `;
 }
-function getCommitMessagePrompt(diff: string): string {
+// EXPORTED FOR TESTING
+export function getCommitMessagePrompt(diff: string): string {
   return `
-    Analyze the following code diff and determine if it's ready to be committed.
-    - If it is ready, generate a conventional commit message in the format: <type>(<scope>): <short summary>.
-    - If it is not ready, explain why.
+    Your primary task is to generate a clear, conventional commit message for the following code diff.
+    The format must be: <type>(<scope>): <short summary>.
 
-    Respond in a pure JSON format. The JSON object should have two keys:
-    1. "ready": a boolean indicating if the code is ready to commit.
-    2. "commitMessage" or "reason": a string containing the commit message if ready, or the reason if not.
+    - Analyze the changes to understand their intent (e.g., adding a feature, fixing a bug, refactoring).
+    - If the changes are reasonable, ALWAYS generate a commit message.
+    - ONLY if the code diff shows extremely low quality, like syntax errors, large blocks of commented-out code, or only whitespace changes, should you decide it's not ready.
+
+    Respond in a pure JSON format.
+    - If you generate a message, the JSON should be: { "ready": true, "commitMessage": "..." }
+    - ONLY in cases of extremely poor quality, the JSON should be: { "ready": false, "reason": "..." }
 
     Diff:
     \`\`\`
@@ -288,9 +379,8 @@ function getCommitMessagePrompt(diff: string): string {
   `;
 }
 
-
-// JSON parsing and validation
-function parseAndValidateJsonResponse(rawText: string): any {
+// EXPORTED FOR TESTING
+export function parseAndValidateJsonResponse(rawText: string): any {
   const jsonRegex = /\{[\s\S]*\}/;
   const match = rawText.match(jsonRegex);
   if (!match) throw new Error("AI response did not contain a valid JSON object.");
@@ -309,16 +399,16 @@ function parseAndValidateJsonResponse(rawText: string): any {
     if (missingKeys.length > 0) {
       throw new Error(`AI response's 'review' object is missing keys: ${missingKeys.join(', ')}`);
     }
-  } else if (!parsedJson.ready) {
+  } else if (parsedJson.hasOwnProperty('ready') && !parsedJson.ready) {
     if (!parsedJson.reason) {
       throw new Error("AI response is missing 'reason' key.");
     }
-  } else if (parsedJson.ready) {
+  } else if (parsedJson.hasOwnProperty('ready') && parsedJson.ready) {
     if (!parsedJson.commitMessage) {
       throw new Error("AI response is missing 'commitMessage' key.");
     }
   } else {
-    throw new Error("Invalid AI response format.");
+    throw new Error("Invalid or incomplete AI response format.");
   }
 
 

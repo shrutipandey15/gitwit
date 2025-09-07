@@ -2,7 +2,7 @@
   "name": "codecritter",
   "displayName": "CodeCritter - AI Code Review",
   "description": "An AI-powered code reviewer with multiple personalities to help you improve your code quality, style, and security.",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "publisher": "shruti-pandey",
   "icon": "icon.png",
   "repository": {
@@ -28,7 +28,8 @@
     "commit"
   ],
   "activationEvents": [
-    "onCommand:codecritter.start"
+    "onCommand:codecritter.start",
+    "workspaceContains:.git"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -36,11 +37,6 @@
       {
         "command": "codecritter.start",
         "title": "Start Review",
-        "category": "CodeCritter"
-      },
-      {
-        "command": "codecritter.commit",
-        "title": "Analyze for Commit",
         "category": "CodeCritter"
       }
     ],
@@ -51,6 +47,18 @@
           "type": "string",
           "default": "",
           "description": "Your personal Google AI API key for CodeCritter to use. Get one from https://makersuite.google.com/app/apikey"
+        },
+        "codecritter.persona": {
+          "type": "string",
+          "default": "Strict Tech Lead",
+          "description": "The personality of the AI code reviewer.",
+          "enum": [
+            "Strict Tech Lead",
+            "Supportive Mentor",
+            "Sarcastic Reviewer",
+            "Code Poet",
+            "Paranoid Security Engineer"
+          ]
         }
       }
     }

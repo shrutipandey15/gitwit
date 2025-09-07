@@ -166,80 +166,7 @@
           </div>
         </div>
       );
-      const CommitAnalysisSection = ({
-        diff,
-        setDiff,
-        isLoading,
-        handleAnalyzeCommit,
-        commitAnalysis,
-        handlePerformCommit,
-      }) => (
-        <div className="space-y-4 pt-4 border-t border-gray-700">
-          <h2 className="text-lg font-semibold">Commit Analysis</h2>
-          <div className="space-y-2">
-            <label htmlFor="diffInput" className="block text-sm font-medium">
-              Paste Your Code Diff
-            </label>
-            <textarea
-              id="diffInput"
-              rows="10"
-              className="w-full p-2 border border-gray-600 rounded-md bg-gray-800 text-gray-200 font-mono text-sm"
-              placeholder="Paste your git diff here"
-              value={diff}
-              onChange={(e) => setDiff(e.target.value)}
-              disabled={isLoading}
-            ></textarea>
-          </div>
-          <button
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition-colors disabled:bg-gray-500"
-            onClick={handleAnalyzeCommit}
-            disabled={isLoading || !diff}
-          >
-            {isLoading ? "Analyzing..." : "Analyze for Commit"}
-          </button>
-          {commitAnalysis && (
-            <div className="mt-4 p-4 bg-gray-800 rounded-md space-y-3">
-              {commitAnalysis.ready ? (
-                <div>
-                  <h3 className="font-bold text-green-400">
-                    Ready for commit
-                  </h3>
-                  <p className="text-gray-300 mt-2">
-                    Proposed commit message:
-                  </p>
-                  <pre className="text-gray-300 whitespace-pre-wrap font-mono text-sm p-2 bg-gray-700 rounded-md mt-2">
-                    <code>{commitAnalysis.commitMessage}</code>
-                  </pre>
-                  <div className="flex space-x-2 mt-4">
-                    <button
-                      className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md"
-                      onClick={() =>
-                        handlePerformCommit(commitAnalysis.commitMessage)
-                      }
-                    >
-                      Commit
-                    </button>
-                    <button className="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-md">
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <h3 className="font-bold text-red-400">
-                    Not ready for commit
-                  </h3>
-                  <p className="text-gray-300 mt-2">
-                    {commitAnalysis.reason}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      );
-
-
+      
       function App() {
         const [code, setCode] = React.useState("");
         const [persona, setPersona] = React.useState("Strict Tech Lead");
@@ -252,9 +179,7 @@
         const [docstring, setDocstring] = React.useState("");
         const [activeTask, setActiveTask] = React.useState("");
         const [apiKey, setApiKey] = React.useState("");
-        const [diff, setDiff] = React.useState("");
-        const [commitAnalysis, setCommitAnalysis] = React.useState(null);
-
+        
         React.useEffect(() => {
           const handleMessage = (event) => {
             const message = event.data;
@@ -270,10 +195,6 @@
                 break;
               case "setApiKey":
                 setApiKey(message.apiKey || "");
-                break;
-              case "displayCommitAnalysis":
-                setCommitAnalysis(message.analysis);
-                setIsLoading(false);
                 break;
             }
           };
@@ -311,7 +232,6 @@
           setReview(null);
           setProductionRisk([]);
           setDocstring("");
-          setCommitAnalysis(null);
           vscode.postMessage({ command: "review", code, persona });
         };
         const handleGenerateDocstringClick = () => {
@@ -320,22 +240,9 @@
           setReview(null);
           setProductionRisk([]);
           setDocstring("");
-          setCommitAnalysis(null);
           vscode.postMessage({ command: "generateDocstring", code });
         };
-        const handleAnalyzeCommit = () => {
-          setIsLoading(true);
-          setActiveTask("commit");
-          setReview(null);
-          setProductionRisk([]);
-          setDocstring("");
-          setCommitAnalysis(null);
-          vscode.postMessage({ command: "analyzeForCommit", diff });
-        };
-
-        const handlePerformCommit = (commitMessage) => {
-          vscode.postMessage({ command: "performCommit", message: commitMessage });
-        };
+        
         const handleCopyClick = () => {
           if (!review) return;
           let md = `## CodeCritter Review (via ${persona})\n\n### Summary\n> ${review.summary}\n\n### Critique\n> ${review.critique}\n\n### Suggestions\n> ${review.suggestions}\n\n`;
@@ -398,15 +305,7 @@
                 </button>
               </div>
             )}
-            <CommitAnalysisSection
-              diff={diff}
-              setDiff={setDiff}
-              isLoading={isLoading && activeTask === "commit"}
-              handleAnalyzeCommit={handleAnalyzeCommit}
-              commitAnalysis={commitAnalysis}
-              handlePerformCommit={handlePerformCommit}
-            />
-
+            
             {!review && !docstring && !isLoading && (
               <div className="space-y-4 pt-4 border-t border-gray-700 text-center">
                 <p className="text-gray-400 italic">
