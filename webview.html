@@ -25,6 +25,31 @@
           border-right-color: var(--vscode-editor-foreground);
         }
       }
+      .toggle-switch {
+        position: relative;
+        width: 50px;
+        height: 24px;
+        background-color: #374151;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+      }
+      .toggle-switch.active {
+        background-color: #4f46e5;
+      }
+      .toggle-slider {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 20px;
+        height: 20px;
+        background-color: white;
+        border-radius: 50%;
+        transition: transform 0.3s;
+      }
+      .toggle-switch.active .toggle-slider {
+        transform: translateX(26px);
+      }
     </style>
   </head>
   <body>
@@ -41,6 +66,91 @@
         </header>
       );
 
+      const AutoReviewSection = ({ 
+        autoReviewEnabled, 
+        setAutoReviewEnabled, 
+        reviewThreshold, 
+        setReviewThreshold,
+        commitAssistEnabled,
+        setCommitAssistEnabled,
+        handleSaveSettings 
+      }) => {
+        const [isOpen, setIsOpen] = React.useState(false);
+        
+        return (
+          <div className="pt-4 border-t border-gray-700">
+            <button
+              onClick={() => setIsOpen(!isOpen)}
+              className="w-full text-left font-semibold text-lg hover:text-indigo-400 transition-colors"
+            >
+              Auto Review Settings {isOpen ? "▲" : "▼"}
+            </button>
+            {isOpen && (
+              <div className="mt-4 p-4 bg-gray-800 rounded-md space-y-4">
+                <p className="text-sm text-gray-400">
+                  Configure CodeCritter's automated review behavior. Auto review analyzes your code automatically when you save files.
+                </p>
+                
+                {/* Auto Review Toggle */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block text-sm font-medium">Auto Review</label>
+                    <p className="text-xs text-gray-400">Automatically review code when files are saved</p>
+                  </div>
+                  <div 
+                    className={`toggle-switch ${autoReviewEnabled ? 'active' : ''}`}
+                    onClick={() => setAutoReviewEnabled(!autoReviewEnabled)}
+                  >
+                    <div className="toggle-slider"></div>
+                  </div>
+                </div>
+
+                {/* Commit Assistant Toggle */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block text-sm font-medium">Commit Assistant</label>
+                    <p className="text-xs text-gray-400">Suggest commit messages when changes are ready</p>
+                  </div>
+                  <div 
+                    className={`toggle-switch ${commitAssistEnabled ? 'active' : ''}`}
+                    onClick={() => setCommitAssistEnabled(!commitAssistEnabled)}
+                  >
+                    <div className="toggle-slider"></div>
+                  </div>
+                </div>
+
+                {/* Review Threshold */}
+                <div className="space-y-2">
+                  <label htmlFor="reviewThreshold" className="block text-sm font-medium">
+                    Notification Threshold
+                  </label>
+                  <select
+                    id="reviewThreshold"
+                    className="w-full p-2 border border-gray-600 rounded-md bg-gray-900 text-gray-200"
+                    value={reviewThreshold}
+                    onChange={(e) => setReviewThreshold(e.target.value)}
+                  >
+                    <option value="low">Low - Show all reviews</option>
+                    <option value="medium">Medium - Show moderate+ issues</option>
+                    <option value="high">High - Show only severe issues</option>
+                  </select>
+                  <p className="text-xs text-gray-400">
+                    Controls when you get notified about code reviews
+                  </p>
+                </div>
+
+                <button
+                  className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md"
+                  onClick={handleSaveSettings}
+                >
+                  Save Auto Review Settings
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      };
+
       const SettingsSection = ({ apiKey, setApiKey, handleSaveKey }) => {
         const [isOpen, setIsOpen] = React.useState(false);
         return (
@@ -49,7 +159,7 @@
               onClick={() => setIsOpen(!isOpen)}
               className="w-full text-left font-semibold text-lg hover:text-indigo-400 transition-colors"
             >
-              Settings {isOpen ? "▲" : "▼"}
+              API Settings {isOpen ? "▲" : "▼"}
             </button>
             {isOpen && (
               <div className="mt-4 p-4 bg-gray-800 rounded-md space-y-3">
@@ -102,8 +212,12 @@
             onChange={(e) => setCode(e.target.value)}
             disabled={isLoading}
           ></textarea>
+          <p className="text-xs text-gray-400">
+            💡 Tip: Auto review is active! Just save your files to get automatic code analysis.
+          </p>
         </div>
       );
+
       const PersonaSelector = ({ persona, setPersona, isLoading }) => (
         <div className="space-y-2">
           <label htmlFor="persona" className="block text-sm font-medium">
@@ -124,6 +238,7 @@
           </select>
         </div>
       );
+
       const ReviewSection = ({ review }) => (
         <div className="space-y-4 pt-4 border-t border-gray-700">
           <h2 className="text-lg font-semibold">Review</h2>
@@ -143,6 +258,7 @@
           </div>
         </div>
       );
+
       const ProductionRiskSection = ({ risks }) => (
         <div className="space-y-4 pt-4 border-t border-gray-700">
           <h2 className="text-lg font-semibold">Production Risk Watch</h2>
@@ -156,6 +272,7 @@
           </ul>
         </div>
       );
+
       const DocstringSection = ({ docstring }) => (
         <div className="space-y-4 pt-4 border-t border-gray-700">
           <h2 className="text-lg font-semibold">Generated Docstring</h2>
@@ -180,6 +297,11 @@
         const [activeTask, setActiveTask] = React.useState("");
         const [apiKey, setApiKey] = React.useState("");
         
+        // Auto review settings
+        const [autoReviewEnabled, setAutoReviewEnabled] = React.useState(true);
+        const [reviewThreshold, setReviewThreshold] = React.useState("medium");
+        const [commitAssistEnabled, setCommitAssistEnabled] = React.useState(true);
+        
         React.useEffect(() => {
           const handleMessage = (event) => {
             const message = event.data;
@@ -196,10 +318,16 @@
               case "setApiKey":
                 setApiKey(message.apiKey || "");
                 break;
+              case "setAutoReviewSettings":
+                setAutoReviewEnabled(message.autoReviewEnabled ?? true);
+                setReviewThreshold(message.reviewThreshold || "medium");
+                setCommitAssistEnabled(message.commitAssistEnabled ?? true);
+                break;
             }
           };
           window.addEventListener("message", handleMessage);
           vscode.postMessage({ command: "getApiKey" });
+          vscode.postMessage({ command: "getAutoReviewSettings" });
           return () => window.removeEventListener("message", handleMessage);
         }, []);
 
@@ -234,6 +362,7 @@
           setDocstring("");
           vscode.postMessage({ command: "review", code, persona });
         };
+
         const handleGenerateDocstringClick = () => {
           setIsLoading(true);
           setActiveTask("docstring");
@@ -254,13 +383,52 @@
           }
           vscode.postMessage({ command: "copyToClipboard", text: md });
         };
+
         const handleSaveKey = () => {
           vscode.postMessage({ command: "saveApiKey", apiKey: apiKey });
+        };
+
+        const handleSaveSettings = () => {
+          vscode.postMessage({ 
+            command: "saveAutoReviewSettings", 
+            autoReviewEnabled,
+            reviewThreshold,
+            commitAssistEnabled,
+            persona
+          });
         };
 
         return (
           <div className="p-4 space-y-6">
             <Header />
+            
+            {/* Auto Review Status Banner */}
+            <div className={`p-3 rounded-md border-l-4 ${
+              autoReviewEnabled 
+                ? 'bg-green-900/30 border-green-500' 
+                : 'bg-gray-800 border-gray-500'
+            }`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">
+                    {autoReviewEnabled ? '🤖 Auto Review Active' : '😴 Auto Review Disabled'}
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    {autoReviewEnabled 
+                      ? `Watching files • Threshold: ${reviewThreshold} • Commit assist: ${commitAssistEnabled ? 'on' : 'off'}`
+                      : 'Enable in Auto Review Settings below'
+                    }
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setAutoReviewEnabled(!autoReviewEnabled)}
+                  className="text-xs bg-indigo-600 hover:bg-indigo-700 px-2 py-1 rounded"
+                >
+                  {autoReviewEnabled ? 'Disable' : 'Enable'}
+                </button>
+              </div>
+            </div>
+
             <CodeInput code={code} setCode={setCode} isLoading={isLoading} />
             <PersonaSelector
               persona={persona}
@@ -276,7 +444,7 @@
               >
                 {isLoading && activeTask === "review"
                   ? "Getting Review..."
-                  : "Get Review"}
+                  : "Get Manual Review"}
               </button>
               <button
                 className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md transition-colors disabled:bg-gray-500"
@@ -309,7 +477,10 @@
             {!review && !docstring && !isLoading && (
               <div className="space-y-4 pt-4 border-t border-gray-700 text-center">
                 <p className="text-gray-400 italic">
-                  Your code review will appear here...
+                  {autoReviewEnabled 
+                    ? "Auto review is active! Save any code file to get automatic analysis."
+                    : "Your code review will appear here..."
+                  }
                 </p>
               </div>
             )}
@@ -322,6 +493,16 @@
                 </p>
               </div>
             )}
+
+            <AutoReviewSection 
+              autoReviewEnabled={autoReviewEnabled}
+              setAutoReviewEnabled={setAutoReviewEnabled}
+              reviewThreshold={reviewThreshold}
+              setReviewThreshold={setReviewThreshold}
+              commitAssistEnabled={commitAssistEnabled}
+              setCommitAssistEnabled={setCommitAssistEnabled}
+              handleSaveSettings={handleSaveSettings}
+            />
 
             <SettingsSection
               apiKey={apiKey}

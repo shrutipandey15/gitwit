@@ -1,13 +1,13 @@
 /**
  * CodeCritter - extension.ts
- * Standalone extension that handles AI requests directly without backend server
+ * Enhanced with automated code review functionality
  */
 
 import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { exec } from 'child_process'; // Import the 'exec' function
+import { exec } from 'child_process';
 
 // Minimal interfaces for the VS Code Git extension API
 interface GitExtensionExports {
@@ -36,10 +36,15 @@ const circuitBreaker: CircuitBreaker = {
   isOpen: false
 };
 
+// Track review status to avoid duplicate reviews
+let isReviewInProgress = false;
+let lastReviewedContent = new Map<string, string>();
+
 export async function activate(context: vscode.ExtensionContext) {
   console.log('CodeCritter extension is now active!');
   
   await setupProactiveCommitAssistant(context);
+  await setupAutomatedReviewSystem(context);
 
   let disposable = vscode.commands.registerCommand("codecritter.start", () => {
     const panel = vscode.window.createWebviewPanel(
@@ -64,6 +69,29 @@ export async function activate(context: vscode.ExtensionContext) {
               command: "setApiKey",
               apiKey: config.get("apiKey"),
             });
+            return;
+
+          case "getAutoReviewSettings":
+            panel.webview.postMessage({
+              command: "setAutoReviewSettings",
+              autoReviewEnabled: config.get("autoReviewEnabled", true),
+              reviewThreshold: config.get("reviewThreshold", "medium"),
+              commitAssistEnabled: config.get("commitAssistEnabled", true),
+            });
+            return;
+
+          case "saveAutoReviewSettings":
+            try {
+              await config.update("autoReviewEnabled", message.autoReviewEnabled, vscode.ConfigurationTarget.Global);
+              await config.update("reviewThreshold", message.reviewThreshold, vscode.ConfigurationTarget.Global);
+              await config.update("commitAssistEnabled", message.commitAssistEnabled, vscode.ConfigurationTarget.Global);
+              await config.update("persona", message.persona, vscode.ConfigurationTarget.Global);
+              
+              vscode.window.showInformationMessage("Auto Review settings saved successfully!");
+            } catch (error) {
+              console.error("Failed to save auto review settings:", error);
+              vscode.window.showErrorMessage("Could not save auto review settings.");
+            }
             return;
 
           case "saveApiKey":
@@ -154,7 +182,18 @@ export async function activate(context: vscode.ExtensionContext) {
     );
   });
 
-  context.subscriptions.push(disposable);
+  // Add command for toggling auto-review
+  let toggleAutoReviewCommand = vscode.commands.registerCommand("codecritter.toggleAutoReview", async () => {
+    const config = vscode.workspace.getConfiguration("codecritter");
+    const currentSetting = config.get("autoReviewEnabled", true);
+    await config.update("autoReviewEnabled", !currentSetting, vscode.ConfigurationTarget.Global);
+    
+    vscode.window.showInformationMessage(
+      `CodeCritter Auto Review ${!currentSetting ? 'Enabled' : 'Disabled'}`
+    );
+  });
+
+  context.subscriptions.push(disposable, toggleAutoReviewCommand);
 }
 
 // New helper function to execute a command and return its output
@@ -168,8 +207,6 @@ function executeCommand(command: string): Promise<string> {
         exec(command, { cwd: workspaceFolder }, (error, stdout, stderr) => {
             if (error) {
                 console.warn(`Warning executing command "${command}":`, stderr);
-                // Often, git diff returns an error code if there are no changes,
-                // so we resolve with an empty string instead of rejecting.
                 resolve(''); 
                 return;
             }
@@ -178,11 +215,171 @@ function executeCommand(command: string): Promise<string> {
     });
 }
 
+async function setupAutomatedReviewSystem(context: vscode.ExtensionContext) {
+    console.log("CodeCritter: Setting up automated code review system...");
+
+    context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(async (document) => {
+        const config = vscode.workspace.getConfiguration("codecritter");
+        const autoReviewEnabled = config.get("autoReviewEnabled", true);
+        const userApiKey = config.get("apiKey") as string;
+
+        if (!autoReviewEnabled || !userApiKey || isReviewInProgress) {
+            return;
+        }
+
+        // Skip certain file types
+        if (shouldSkipFile(document)) {
+            return;
+        }
+
+        const filePath = document.uri.fsPath;
+        const currentContent = document.getText();
+        
+        // Check if content has actually changed since last review
+        if (lastReviewedContent.get(filePath) === currentContent) {
+            return;
+        }
+
+        console.log(`CodeCritter: Analyzing saved file: ${document.fileName}`);
+        isReviewInProgress = true;
+
+        try {
+            // Get the specific changes for this file
+            const relativeFilePath = vscode.workspace.asRelativePath(document.uri);
+            const fileDiff = await executeCommand(`git diff HEAD -- "${relativeFilePath}"`);
+            
+            if (!fileDiff.trim()) {
+                // If no diff, analyze the current content instead
+                await performAutomatedReview(currentContent, document.fileName, userApiKey, config);
+            } else {
+                // Analyze the changes
+                await performAutomatedReview(fileDiff, document.fileName, userApiKey, config, true);
+            }
+
+            lastReviewedContent.set(filePath, currentContent);
+        } catch (error) {
+            console.error("CodeCritter: Failed to perform automated review:", error);
+        } finally {
+            isReviewInProgress = false;
+        }
+    }));
+}
+
+function shouldSkipFile(document: vscode.TextDocument): boolean {
+    const fileName = document.fileName.toLowerCase();
+    const skipExtensions = ['.json', '.md', '.txt', '.log', '.xml', '.yaml', '.yml'];
+    const skipPaths = ['/.git/', '/node_modules/', '/dist/', '/build/', '/.vscode/'];
+    
+    // Skip if it's in excluded paths
+    if (skipPaths.some(path => document.uri.path.includes(path))) {
+        return true;
+    }
+    
+    // Skip if it's an excluded file type
+    if (skipExtensions.some(ext => fileName.endsWith(ext))) {
+        return true;
+    }
+    
+    // Skip very large files (over 10KB)
+    if (document.getText().length > 10000) {
+        return true;
+    }
+    
+    return false;
+}
+
+async function performAutomatedReview(
+    content: string, 
+    fileName: string, 
+    apiKey: string, 
+    config: vscode.WorkspaceConfiguration,
+    isDiff: boolean = false
+) {
+    try {
+        const persona = config.get("persona", "Strict Tech Lead");
+        const reviewThreshold = config.get("reviewThreshold", "medium"); // low, medium, high
+        
+        // Get automated review
+        const reviewData = await generateAutomatedReview(content, persona, apiKey, isDiff);
+        
+        if (reviewData && shouldShowReview(reviewData, reviewThreshold)) {
+            await showAutomatedReviewNotification(reviewData, fileName, persona);
+        }
+    } catch (error) {
+        console.error("Error in automated review:", error);
+    }
+}
+
+function shouldShowReview(reviewData: any, threshold: string): boolean {
+    if (!reviewData.severity) return true;
+    
+    const severityLevels = { low: 1, medium: 2, high: 3 };
+    const thresholdLevel = severityLevels[threshold as keyof typeof severityLevels] || 2;
+    const reviewSeverity = severityLevels[reviewData.severity as keyof typeof severityLevels] || 2;
+    
+    return reviewSeverity >= thresholdLevel;
+}
+
+async function showAutomatedReviewNotification(reviewData: any, fileName: string, persona: string) {
+    const message = getAutoReviewMessage(persona, reviewData, fileName);
+    
+    const action = await vscode.window.showInformationMessage(
+        message,
+        { modal: false },
+        "Show Details",
+        "Ignore",
+        "Disable Auto Review"
+    );
+
+    switch (action) {
+        case "Show Details":
+            await showDetailedReview(reviewData, fileName);
+            break;
+        case "Disable Auto Review":
+            const config = vscode.workspace.getConfiguration("codecritter");
+            await config.update("autoReviewEnabled", false, vscode.ConfigurationTarget.Global);
+            vscode.window.showInformationMessage("Auto Review disabled. Use 'CodeCritter: Toggle Auto Review' to re-enable.");
+            break;
+        case "Ignore":
+        default:
+            // Do nothing
+            break;
+    }
+}
+
+async function showDetailedReview(reviewData: any, fileName: string) {
+    const panel = vscode.window.createWebviewPanel(
+        'codecritterAutoReview',
+        `CodeCritter: ${fileName}`,
+        vscode.ViewColumn.Beside,
+        { enableScripts: true }
+    );
+
+    panel.webview.html = getAutoReviewWebviewContent(reviewData, fileName);
+}
+
+function getAutoReviewMessage(persona: string, reviewData: any, fileName: string): string {
+    const summary = reviewData.review?.summary || "Code analysis complete";
+    const shortFileName = path.basename(fileName);
+    
+    switch (persona) {
+        case 'Supportive Mentor':
+            return `Great work on ${shortFileName}! I noticed some areas where we could improve. ${summary.substring(0, 100)}...`;
+        case 'Sarcastic Reviewer':
+            return `Well, well... ${shortFileName} could use some attention. ${summary.substring(0, 100)}...`;
+        case 'Code Poet':
+            return `The code in ${shortFileName} has potential for greater elegance. ${summary.substring(0, 100)}...`;
+        case 'Paranoid Security Engineer':
+            return `SECURITY SCAN: ${shortFileName} requires attention! ${summary.substring(0, 100)}...`;
+        case 'Strict Tech Lead':
+        default:
+            return `Code review for ${shortFileName}: ${summary.substring(0, 100)}...`;
+    }
+}
 
 async function setupProactiveCommitAssistant(context: vscode.ExtensionContext) {
     console.log("CodeCritter: Setting up proactive commit assistant...");
 
-    // We still need the Git extension to know a repository exists.
     const gitExtension = vscode.extensions.getExtension<GitExtensionExports>('vscode.git');
     if (!gitExtension) {
         console.warn("CodeCritter: VS Code Git extension not found. Proactive commit assistant is disabled.");
@@ -201,12 +398,12 @@ async function setupProactiveCommitAssistant(context: vscode.ExtensionContext) {
         
         const config = vscode.workspace.getConfiguration("codecritter");
         const userApiKey = config.get("apiKey") as string;
+        const commitAssistEnabled = config.get("commitAssistEnabled", true);
 
-        if (!userApiKey) {
-            return; // Silently exit if no API key
+        if (!userApiKey || !commitAssistEnabled) {
+            return;
         }
         
-        // Use our new reliable method to get the diff
         const stagedDiff = await executeCommand('git diff --staged');
         const unstagedDiff = await executeCommand('git diff');
         const fullDiff = (stagedDiff + '\n' + unstagedDiff).trim();
@@ -264,6 +461,68 @@ function getPopupMessage(persona: string, commitMessage: string): string {
     }
 }
 
+function getAutoReviewWebviewContent(reviewData: any, fileName: string): string {
+    return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>CodeCritter Auto Review</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <style>
+            body { 
+                background-color: var(--vscode-editor-background);
+                color: var(--vscode-editor-foreground);
+                font-family: var(--vscode-font-family);
+            }
+            .review-card { border-left: 4px solid #4f46e5; }
+        </style>
+    </head>
+    <body>
+        <div class="p-6 space-y-6">
+            <header class="text-center border-b border-gray-700 pb-4">
+                <h1 class="text-2xl font-bold">CodeCritter Auto Review</h1>
+                <p class="text-gray-400">${fileName}</p>
+            </header>
+            
+            <div class="space-y-4">
+                <div class="p-4 bg-gray-800 rounded-md space-y-3">
+                    <div class="p-3 bg-gray-700 rounded-md review-card">
+                        <h3 class="font-bold text-indigo-300">Summary</h3>
+                        <p class="text-gray-300">${reviewData.review?.summary || 'No summary available'}</p>
+                    </div>
+                    
+                    <div class="p-3 bg-gray-700 rounded-md review-card">
+                        <h3 class="font-bold text-indigo-300">Key Issues</h3>
+                        <p class="text-gray-300">${reviewData.review?.critique || 'No critique available'}</p>
+                    </div>
+                    
+                    <div class="p-3 bg-gray-700 rounded-md review-card">
+                        <h3 class="font-bold text-indigo-300">Recommendations</h3>
+                        <p class="text-gray-300">${reviewData.review?.suggestions || 'No suggestions available'}</p>
+                    </div>
+                </div>
+                
+                ${reviewData.productionRisk && reviewData.productionRisk.length > 0 ? `
+                <div class="space-y-2">
+                    <h3 class="font-bold text-yellow-400">🚨 Production Risk Watch</h3>
+                    <ul class="p-4 bg-gray-800 rounded-md space-y-2">
+                        ${reviewData.productionRisk.map((risk: any) => `
+                            <li class="flex items-start">
+                                <span class="mr-2">${risk.isSafe ? '✅' : '⚠️'}</span>
+                                <span>${risk.risk}</span>
+                            </li>
+                        `).join('')}
+                    </ul>
+                </div>
+                ` : ''}
+            </div>
+        </div>
+    </body>
+    </html>
+    `;
+}
 
 export function deactivate() {}
 
@@ -321,7 +580,49 @@ async function retryWithBackoff<T>(
   throw new Error("All retry attempts failed");
 }
 
-// Prompt generation functions
+// Enhanced prompt for automated reviews
+function getAutomatedReviewPrompt(content: string, persona: string, isDiff: boolean = false): string {
+  const contentType = isDiff ? "code changes (diff)" : "code";
+  const baseInstruction = `
+    You are performing an automated code review on ${contentType}. 
+    Analyze and provide feedback in pure JSON format with these keys:
+    1. "review": Object with "summary", "critique", "suggestions" strings
+    2. "productionRisk": Array of objects with "risk" string and "isSafe" boolean
+    3. "severity": String - "low", "medium", or "high" based on issues found
+    
+    Focus on:
+    - Code quality and maintainability
+    - Potential bugs or logic errors  
+    - Performance concerns
+    - Security vulnerabilities
+    - Best practices violations
+    
+    Keep feedback concise but actionable.
+  `;
+
+  const personaContext = getPersonaContext(persona);
+  
+  return `${personaContext} ${baseInstruction}\n\n${contentType.toUpperCase()}:\n\`\`\`\n${content}\n\`\`\``;
+}
+
+function getPersonaContext(persona: string): string {
+  switch (persona) {
+    case 'Strict Tech Lead':
+      return "You are a strict technical leader focused on architecture, scalability, and engineering excellence.";
+    case 'Supportive Mentor':
+      return "You are a supportive mentor who provides encouraging feedback while helping developers learn and improve.";
+    case 'Sarcastic Reviewer':
+      return "You are a witty, sarcastic reviewer who points out issues with clever humor while still being helpful.";
+    case 'Code Poet':
+      return "You are a code poet who values elegance, readability, and artistic expression in code structure.";
+    case 'Paranoid Security Engineer':
+      return "You are a security-focused engineer who prioritizes identifying vulnerabilities and security risks above all else.";
+    default:
+      return "You are an experienced code reviewer.";
+  }
+}
+
+// Prompt generation functions (existing)
 function getPrompt(persona: string, code: string): string {
   const baseInstruction = `
     Analyze the following code snippet. Provide your review in a pure JSON format, with no markdown wrappers or extra text.
@@ -358,7 +659,7 @@ function getDocstringPrompt(code: string): string {
     \`\`\`
   `;
 }
-// EXPORTED FOR TESTING
+
 export function getCommitMessagePrompt(diff: string): string {
   return `
     Your primary task is to generate a clear, conventional commit message for the following code diff.
@@ -379,7 +680,6 @@ export function getCommitMessagePrompt(diff: string): string {
   `;
 }
 
-// EXPORTED FOR TESTING
 export function parseAndValidateJsonResponse(rawText: string): any {
   const jsonRegex = /\{[\s\S]*\}/;
   const match = rawText.match(jsonRegex);
@@ -411,7 +711,6 @@ export function parseAndValidateJsonResponse(rawText: string): any {
     throw new Error("Invalid or incomplete AI response format.");
   }
 
-
   return parsedJson;
 }
 
@@ -423,6 +722,31 @@ async function generateReview(code: string, persona: string, apiKey: string): Pr
 
   try {
     const prompt = getPrompt(persona, code);
+    const result = await retryWithBackoff(async () => {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+      return parseAndValidateJsonResponse(text);
+    });
+
+    recordSuccess();
+    return result;
+  } catch (error) {
+    recordFailure();
+    throw error;
+  }
+}
+
+// New function for automated reviews
+async function generateAutomatedReview(content: string, persona: string, apiKey: string, isDiff: boolean = false): Promise<any> {
+  if (isCircuitBreakerOpen()) {
+    throw new Error("Service is currently unavailable. Please try again later.");
+  }
+
+  try {
+    const prompt = getAutomatedReviewPrompt(content, persona, isDiff);
     const result = await retryWithBackoff(async () => {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
@@ -462,6 +786,7 @@ async function generateDocstring(code: string, apiKey: string): Promise<string> 
     throw error;
   }
 }
+
 async function analyzeAndSuggestCommit(diff: string, apiKey: string): Promise<any> {
   if (isCircuitBreakerOpen()) {
     throw new Error("Service is currently unavailable. Please try again later.");

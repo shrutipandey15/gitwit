@@ -2,7 +2,7 @@
   "name": "codecritter",
   "displayName": "CodeCritter - AI Code Review",
   "description": "An AI-powered code reviewer with multiple personalities to help you improve your code quality, style, and security.",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "publisher": "shruti-pandey",
   "icon": "icon.png",
   "repository": {
@@ -25,10 +25,12 @@
     "code quality",
     "docstring",
     "security",
-    "commit"
+    "commit",
+    "automated review"
   ],
   "activationEvents": [
     "onCommand:codecritter.start",
+    "onCommand:codecritter.toggleAutoReview",
     "workspaceContains:.git"
   ],
   "main": "./out/extension.js",
@@ -37,6 +39,11 @@
       {
         "command": "codecritter.start",
         "title": "Start Review",
+        "category": "CodeCritter"
+      },
+      {
+        "command": "codecritter.toggleAutoReview",
+        "title": "Toggle Auto Review",
         "category": "CodeCritter"
       }
     ],
@@ -59,6 +66,31 @@
             "Code Poet",
             "Paranoid Security Engineer"
           ]
+        },
+        "codecritter.autoReviewEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic code review when files are saved"
+        },
+        "codecritter.reviewThreshold": {
+          "type": "string",
+          "default": "medium",
+          "description": "Minimum severity level to show auto-review notifications",
+          "enum": [
+            "low",
+            "medium", 
+            "high"
+          ],
+          "enumDescriptions": [
+            "Show all reviews including minor issues",
+            "Show reviews for moderate and severe issues",
+            "Show only reviews for severe issues"
+          ]
+        },
+        "codecritter.commitAssistEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic commit message suggestions when files are saved"
         }
       }
     }
