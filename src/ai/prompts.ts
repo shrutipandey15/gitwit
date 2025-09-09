@@ -99,3 +99,18 @@ export function getCommitMessagePrompt(diff: string): string {
     \`\`\`
   `;
 }
+
+export function getExplanationPrompt(code: string): string {
+  return `
+    You are an expert software engineer acting as a helpful code explainer.
+    Analyze the following code snippet and explain what it does in simple, clear terms.
+    Focus on the logic, purpose, and any non-obvious parts.
+    Do not provide a code review or suggestions for improvement. Just explain the code as it is.
+    Format the response as a single block of plain text.
+
+    Code:
+    \`\`\`
+    ${code}
+    \`\`\`
+  `;
+}

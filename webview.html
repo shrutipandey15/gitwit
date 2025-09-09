@@ -218,27 +218,6 @@
         </div>
       );
 
-      const PersonaSelector = ({ persona, setPersona, isLoading }) => (
-        <div className="space-y-2">
-          <label htmlFor="persona" className="block text-sm font-medium">
-            Choose a Reviewer Persona
-          </label>
-          <select
-            id="persona"
-            className="w-full p-2 border border-gray-600 rounded-md bg-gray-800 text-gray-200"
-            value={persona}
-            onChange={(e) => setPersona(e.target.value)}
-            disabled={isLoading}
-          >
-            <option>Strict Tech Lead</option>
-            <option>Supportive Mentor</option>
-            <option>Sarcastic Reviewer</option>
-            <option>Code Poet</option>
-            <option>Paranoid Security Engineer</option>
-          </select>
-        </div>
-      );
-
       const ReviewSection = ({ review }) => (
         <div className="space-y-4 pt-4 border-t border-gray-700">
           <h2 className="text-lg font-semibold">Review</h2>
@@ -286,7 +265,6 @@
       
       function App() {
         const [code, setCode] = React.useState("");
-        const [persona, setPersona] = React.useState("Strict Tech Lead");
         const [review, setReview] = React.useState(null);
         const [productionRisk, setProductionRisk] = React.useState([]);
         const [isLoading, setIsLoading] = React.useState(false);
@@ -360,7 +338,7 @@
           setReview(null);
           setProductionRisk([]);
           setDocstring("");
-          vscode.postMessage({ command: "review", code, persona });
+          vscode.postMessage({ command: "review", code });
         };
 
         const handleGenerateDocstringClick = () => {
@@ -394,7 +372,6 @@
             autoReviewEnabled,
             reviewThreshold,
             commitAssistEnabled,
-            persona
           });
         };
 
@@ -430,11 +407,6 @@
             </div>
 
             <CodeInput code={code} setCode={setCode} isLoading={isLoading} />
-            <PersonaSelector
-              persona={persona}
-              setPersona={setPersona}
-              isLoading={isLoading}
-            />
 
             <div className="flex space-x-2">
               <button

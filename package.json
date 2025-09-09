@@ -45,8 +45,27 @@
         "command": "codecritter.toggleAutoReview",
         "title": "Toggle Auto Review",
         "category": "CodeCritter"
+      },
+      {
+        "command": "codecritter.selectPersona",
+        "title": "Select Persona",
+        "category": "CodeCritter"
+      },
+      {
+        "command": "codecritter.explainCode",
+        "title": "CodeCritter: Explain This Code",
+        "category": "CodeCritter"
       }
     ],
+    "menus": {
+      "editor/context": [
+        {
+          "when": "editorHasSelection",
+          "command": "codecritter.explainCode",
+          "group": "navigation"
+        }
+      ]
+    },
     "configuration": {
       "title": "CodeCritter",
       "properties": {
@@ -78,7 +97,7 @@
           "description": "Minimum severity level to show auto-review notifications",
           "enum": [
             "low",
-            "medium", 
+            "medium",
             "high"
           ],
           "enumDescriptions": [

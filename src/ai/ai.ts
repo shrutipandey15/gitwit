@@ -10,6 +10,7 @@ import {
   getCommitMessagePrompt,
   getDocstringPrompt,
   getPrompt,
+  getExplanationPrompt,
 } from './prompts';
 
 export function parseAndValidateJsonResponse(rawText: string): any {
@@ -166,3 +167,29 @@ export function parseAndValidateJsonResponse(rawText: string): any {
       throw error;
     }
   }
+
+  export async function generateExplanation(
+  code: string,
+  apiKey: string
+): Promise<string> {
+  if (isCircuitBreakerOpen()) {
+    throw new Error('Service is currently unavailable. Please try again later.');
+  }
+
+  try {
+    const prompt = getExplanationPrompt(code);
+    const result = await retryWithBackoff(async () => {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      return response.text();
+    });
+
+    recordSuccess();
+    return result;
+  } catch (error) {
+    recordFailure();
+    throw error;
+  }
+}

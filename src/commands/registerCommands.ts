@@ -1,7 +1,26 @@
 import * as vscode from 'vscode';
-import { startReviewHandler, toggleAutoReviewHandler } from './handlers';
+import { startReviewHandler, toggleAutoReviewHandler, selectPersonaHandler, explainCodeHandler } from './handlers';
 
 export function registerCommands(context: vscode.ExtensionContext) {
+  const personaStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+  personaStatusBarItem.command = 'codecritter.selectPersona';
+
+  const updateStatusBarItem = () => {
+    const config = vscode.workspace.getConfiguration('codecritter');
+    const persona = config.get('persona', 'Strict Tech Lead');
+    personaStatusBarItem.text = `🤖 ${persona}`;
+    personaStatusBarItem.tooltip = 'Select CodeCritter Persona';
+    personaStatusBarItem.show();
+  };
+
+  context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
+    if (e.affectsConfiguration('codecritter.persona')) {
+      updateStatusBarItem();
+    }
+  }));
+
+  updateStatusBarItem();
+
   const startReviewDisposable = vscode.commands.registerCommand(
     'codecritter.start',
     () => startReviewHandler(context)
@@ -12,8 +31,22 @@ export function registerCommands(context: vscode.ExtensionContext) {
     toggleAutoReviewHandler
   );
 
+  const selectPersonaDisposable = vscode.commands.registerCommand(
+    'codecritter.selectPersona',
+    selectPersonaHandler
+  );
+
+  const explainCodeDisposable = vscode.commands.registerCommand(
+  'codecritter.explainCode',
+  explainCodeHandler
+);
+
+
   context.subscriptions.push(
     startReviewDisposable,
-    toggleAutoReviewDisposable
+    toggleAutoReviewDisposable,
+    selectPersonaDisposable,
+    personaStatusBarItem,
+    explainCodeDisposable
   );
 }
