@@ -2,25 +2,7 @@ import * as vscode from 'vscode';
 import { exec } from 'child_process';
 import { GitExtensionExports } from '../types';
 import { analyzeAndSuggestCommit } from '../ai/ai';
-
-export function executeCommand(command: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const workspaceFolder =
-      vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (!workspaceFolder) {
-      return resolve('');
-    }
-
-    exec(command, { cwd: workspaceFolder }, (error, stdout, stderr) => {
-      if (error) {
-        console.warn(`Warning executing command "${command}":`, stderr);
-        resolve('');
-        return;
-      }
-      resolve(stdout);
-    });
-  });
-}
+import { executeCommand } from '../utils/command';
 
 export async function setupProactiveCommitAssistant(
   context: vscode.ExtensionContext

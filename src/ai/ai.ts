@@ -14,49 +14,42 @@ import {
 } from './prompts';
 
 export function parseAndValidateJsonResponse(rawText: string): any {
-    const jsonRegex = /\{[\s\S]*\}/;
-    const match = rawText.match(jsonRegex);
-    if (!match)
-      throw new Error('AI response did not contain a valid JSON object.');
-  
-    const jsonString = match[0];
-    let parsedJson;
-    try {
-      parsedJson = JSON.parse(jsonString);
-    } catch (error) {
-      throw new Error(
-        `Failed to parse AI response as JSON: ${
-          error instanceof Error ? error.message : 'Unknown error'
-        }`
-      );
-    }
-  
-    if (parsedJson.review && Array.isArray(parsedJson.productionRisk)) {
-      const requiredReviewKeys = ['summary', 'critique', 'suggestions'];
-      const missingKeys = requiredReviewKeys.filter(
-        (key) => !(key in parsedJson.review)
-      );
-      if (missingKeys.length > 0) {
-        throw new Error(
-          `AI response's 'review' object is missing keys: ${missingKeys.join(
-            ', '
-          )}`
-        );
-      }
-    } else if (parsedJson.hasOwnProperty('ready') && !parsedJson.ready) {
-      if (!parsedJson.reason) {
-        throw new Error("AI response is missing 'reason' key.");
-      }
-    } else if (parsedJson.hasOwnProperty('ready') && parsedJson.ready) {
-      if (!parsedJson.commitMessage) {
-        throw new Error("AI response is missing 'commitMessage' key.");
-      }
-    } else {
-      throw new Error('Invalid or incomplete AI response format.');
-    }
-  
+  const jsonRegex = /\{[\s\S]*\}/;
+  const match = rawText.match(jsonRegex);
+  if (!match) {
+    throw new Error('AI response did not contain a valid JSON object.');
+  }
+
+  const jsonString = match[0];
+  let parsedJson;
+  try {
+    parsedJson = JSON.parse(jsonString);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    throw new Error(`Failed to parse AI response as JSON: ${message}`);
+  }
+
+  if (Array.isArray(parsedJson.issues)) {
     return parsedJson;
   }
+
+  if (parsedJson.review && Array.isArray(parsedJson.productionRisk)) {
+    const requiredReviewKeys = ['summary', 'critique', 'suggestions'];
+    if (requiredReviewKeys.every(key => key in parsedJson.review)) {
+      return parsedJson;
+    }
+  }
+
+  if (parsedJson.hasOwnProperty('ready')) {
+    if (parsedJson.ready && parsedJson.commitMessage) {
+      return parsedJson;
+    }
+    if (!parsedJson.ready && parsedJson.reason) {
+      return parsedJson;
+    }
+  }
+  throw new Error('Invalid or incomplete AI response format.');
+}
   
   export async function generateReview(
     code: string,

@@ -1,11 +1,15 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
-import { WebviewManager } from '../webview/WebviewManager';
-import { generateDocstring, generateReview , generateExplanation} from '../ai/ai';
-import { executeCommand } from '../git/git';
-import { generateAutomatedReview } from '../ai/ai';
-import { ReviewData } from '../types';
-import { getAutoReviewWebviewContent } from '../webview/getWebviewContent';
+import * as vscode from "vscode";
+import * as path from "path";
+import { WebviewManager } from "../webview/WebviewManager";
+import {
+  generateDocstring,
+  generateReview,
+  generateExplanation,
+} from "../ai/ai";
+import { executeCommand } from "../utils/command";
+import { generateAutomatedReview } from "../ai/ai";
+import { ReviewData } from "../types";
+import { diagnosticCollection } from "../extension";
 
 let isReviewInProgress = false;
 let lastReviewedContent = new Map<string, string>();
@@ -15,80 +19,80 @@ export async function startReviewHandler(context: vscode.ExtensionContext) {
 
   panel.onDidReceiveMessage(
     async (message) => {
-      const config = vscode.workspace.getConfiguration('codecritter');
+      const config = vscode.workspace.getConfiguration("codecritter");
 
       switch (message.command) {
-        case 'getApiKey':
+        case "getApiKey":
           panel.postMessage({
-            command: 'setApiKey',
-            apiKey: config.get('apiKey'),
+            command: "setApiKey",
+            apiKey: config.get("apiKey"),
           });
           return;
 
-        case 'getAutoReviewSettings':
+        case "getAutoReviewSettings":
           panel.postMessage({
-            command: 'setAutoReviewSettings',
-            autoReviewEnabled: config.get('autoReviewEnabled', true),
-            reviewThreshold: config.get('reviewThreshold', 'medium'),
-            commitAssistEnabled: config.get('commitAssistEnabled', true),
+            command: "setAutoReviewSettings",
+            autoReviewEnabled: config.get("autoReviewEnabled", true),
+            reviewThreshold: config.get("reviewThreshold", "medium"),
+            commitAssistEnabled: config.get("commitAssistEnabled", true),
           });
           return;
 
-        case 'saveAutoReviewSettings':
+        case "saveAutoReviewSettings":
           try {
             await config.update(
-              'autoReviewEnabled',
+              "autoReviewEnabled",
               message.autoReviewEnabled,
               vscode.ConfigurationTarget.Global
             );
             await config.update(
-              'reviewThreshold',
+              "reviewThreshold",
               message.reviewThreshold,
               vscode.ConfigurationTarget.Global
             );
             await config.update(
-              'commitAssistEnabled',
+              "commitAssistEnabled",
               message.commitAssistEnabled,
               vscode.ConfigurationTarget.Global
             );
 
             vscode.window.showInformationMessage(
-              'Auto Review settings saved successfully!'
+              "Auto Review settings saved successfully!"
             );
           } catch (error) {
-            console.error('Failed to save auto review settings:', error);
+            console.error("Failed to save auto review settings:", error);
             vscode.window.showErrorMessage(
-              'Could not save auto review settings.'
+              "Could not save auto review settings."
             );
           }
           return;
 
-        case 'saveApiKey':
+        case "saveApiKey":
           try {
             await config.update(
-              'apiKey',
+              "apiKey",
               message.apiKey,
               vscode.ConfigurationTarget.Global
             );
             vscode.window.showInformationMessage(
-              'CodeCritter API Key saved successfully!'
+              "CodeCritter API Key saved successfully!"
             );
           } catch (error) {
-            console.error('Failed to save API key:', error);
+            console.error("Failed to save API key:", error);
             vscode.window.showErrorMessage(
-              'Could not save the API key. Please check the developer console for errors.'
+              "Could not save the API key. Please check the developer console for errors."
             );
           }
           return;
 
-        case 'review':
+        case "review":
           try {
-            const userApiKey = config.get('apiKey') as string;
-            const currentPersona = config.get('persona', 'Strict Tech Lead');
+            const userApiKey = config.get("apiKey") as string;
+            const currentPersona = config.get("persona", "Strict Tech Lead");
 
             if (!userApiKey) {
               vscode.window.showWarningMessage(
-                'Please set your Gemini API key in the CodeCritter settings first.'
+                "Please set your Gemini API key in the CodeCritter settings first."
               );
               return;
             }
@@ -100,54 +104,49 @@ export async function startReviewHandler(context: vscode.ExtensionContext) {
             );
 
             panel.postMessage({
-              command: 'displayReview',
+              command: "displayReview",
               review: reviewData.review,
               productionRisk: reviewData.productionRisk,
             });
           } catch (error) {
-            console.error('Error generating review:', error);
+            console.error("Error generating review:", error);
             vscode.window.showErrorMessage(
               `Failed to generate review: ${
-                error instanceof Error ? error.message : 'Unknown error'
+                error instanceof Error ? error.message : "Unknown error"
               }`
             );
           }
           return;
 
-        case 'generateDocstring':
+        case "generateDocstring":
           try {
-            const userApiKey = config.get('apiKey') as string;
+            const userApiKey = config.get("apiKey") as string;
             if (!userApiKey) {
               vscode.window.showWarningMessage(
-                'Please set your Gemini API key in the CodeCritter settings first.'
+                "Please set your Gemini API key in the CodeCritter settings first."
               );
               return;
             }
 
-            const docstring = await generateDocstring(
-              message.code,
-              userApiKey
-            );
+            const docstring = await generateDocstring(message.code, userApiKey);
 
             panel.postMessage({
-              command: 'displayDocstring',
+              command: "displayDocstring",
               docstring,
             });
           } catch (error) {
-            console.error('Error generating docstring:', error);
+            console.error("Error generating docstring:", error);
             vscode.window.showErrorMessage(
               `Failed to generate docstring: ${
-                error instanceof Error ? error.message : 'Unknown error'
+                error instanceof Error ? error.message : "Unknown error"
               }`
             );
           }
           return;
-        case 'copyToClipboard':
+        case "copyToClipboard":
           if (message.text) {
             await vscode.env.clipboard.writeText(message.text);
-            vscode.window.showInformationMessage(
-              'Review copied to clipboard!'
-            );
+            vscode.window.showInformationMessage("Review copied to clipboard!");
           }
           return;
       }
@@ -158,29 +157,29 @@ export async function startReviewHandler(context: vscode.ExtensionContext) {
 }
 
 export async function toggleAutoReviewHandler() {
-  const config = vscode.workspace.getConfiguration('codecritter');
-  const currentSetting = config.get('autoReviewEnabled', true);
+  const config = vscode.workspace.getConfiguration("codecritter");
+  const currentSetting = config.get("autoReviewEnabled", true);
   await config.update(
-    'autoReviewEnabled',
+    "autoReviewEnabled",
     !currentSetting,
     vscode.ConfigurationTarget.Global
   );
 
   vscode.window.showInformationMessage(
-    `CodeCritter Auto Review ${!currentSetting ? 'Enabled' : 'Disabled'}`
+    `CodeCritter Auto Review ${!currentSetting ? "Enabled" : "Disabled"}`
   );
 }
 
 export async function setupAutomatedReviewSystem(
   context: vscode.ExtensionContext
 ) {
-  console.log('CodeCritter: Setting up automated code review system...');
+  console.log("CodeCritter: Setting up automated code review system...");
 
   context.subscriptions.push(
     vscode.workspace.onDidSaveTextDocument(async (document) => {
-      const config = vscode.workspace.getConfiguration('codecritter');
-      const autoReviewEnabled = config.get('autoReviewEnabled', true);
-      const userApiKey = config.get('apiKey') as string;
+      const config = vscode.workspace.getConfiguration("codecritter");
+      const autoReviewEnabled = config.get("autoReviewEnabled", true);
+      const userApiKey = config.get("apiKey") as string;
 
       if (!autoReviewEnabled || !userApiKey || isReviewInProgress) {
         return;
@@ -197,39 +196,20 @@ export async function setupAutomatedReviewSystem(
         return;
       }
 
-      console.log(
-        `CodeCritter: Analyzing saved file: ${document.fileName}`
-      );
+      console.log(`CodeCritter: Analyzing saved file: ${document.fileName}`);
       isReviewInProgress = true;
 
       try {
-        const relativeFilePath = vscode.workspace.asRelativePath(document.uri);
-        const fileDiff = await executeCommand(
-          `git diff HEAD -- "${relativeFilePath}"`
+        await performAutomatedReview(
+          currentContent,
+          document,
+          userApiKey,
+          config
         );
-
-        if (!fileDiff.trim()) {
-          await performAutomatedReview(
-            currentContent,
-            document.fileName,
-            userApiKey,
-            config
-          );
-        } else {
-          // Analyze the changes
-          await performAutomatedReview(
-            fileDiff,
-            document.fileName,
-            userApiKey,
-            config,
-            true
-          );
-        }
-
         lastReviewedContent.set(filePath, currentContent);
       } catch (error) {
         console.error(
-          'CodeCritter: Failed to perform automated review:',
+          "CodeCritter: Failed to perform automated review:",
           error
         );
       } finally {
@@ -240,74 +220,88 @@ export async function setupAutomatedReviewSystem(
 }
 
 export async function selectPersonaHandler() {
-  const config = vscode.workspace.getConfiguration('codecritter');
-  
+  const config = vscode.workspace.getConfiguration("codecritter");
+
   const personas = [
     "Strict Tech Lead",
     "Supportive Mentor",
     "Sarcastic Reviewer",
     "Code Poet",
-    "Paranoid Security Engineer"
+    "Paranoid Security Engineer",
   ];
 
   const selectedPersona = await vscode.window.showQuickPick(personas, {
-    placeHolder: 'Choose a reviewer persona for CodeCritter',
+    placeHolder: "Choose a reviewer persona for CodeCritter",
   });
 
   if (selectedPersona) {
-    await config.update('persona', selectedPersona, vscode.ConfigurationTarget.Global);
-    vscode.window.showInformationMessage(`CodeCritter persona set to: ${selectedPersona}`);
+    await config.update(
+      "persona",
+      selectedPersona,
+      vscode.ConfigurationTarget.Global
+    );
+    vscode.window.showInformationMessage(
+      `CodeCritter persona set to: ${selectedPersona}`
+    );
   }
 }
 
 export async function explainCodeHandler() {
   const editor = vscode.window.activeTextEditor;
   if (!editor || editor.selection.isEmpty) {
-    vscode.window.showInformationMessage('Please select some code to explain.');
+    vscode.window.showInformationMessage("Please select some code to explain.");
     return;
   }
 
-  const config = vscode.workspace.getConfiguration('codecritter');
-  const apiKey = config.get<string>('apiKey');
+  const config = vscode.workspace.getConfiguration("codecritter");
+  const apiKey = config.get<string>("apiKey");
   if (!apiKey) {
-    vscode.window.showWarningMessage('Please set your Gemini API key in the CodeCritter settings.');
+    vscode.window.showWarningMessage(
+      "Please set your Gemini API key in the CodeCritter settings."
+    );
     return;
   }
 
   const selectedText = editor.document.getText(editor.selection);
 
-  await vscode.window.withProgress({
-    location: vscode.ProgressLocation.Notification,
-    title: "CodeCritter is explaining...",
-    cancellable: false
-  }, async () => {
-    try {
-      const explanation = await generateExplanation(selectedText, apiKey);
-      vscode.window.showInformationMessage(explanation, { modal: true });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
-      vscode.window.showErrorMessage(`Failed to get explanation: ${errorMessage}`);
+  await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: "CodeCritter is explaining...",
+      cancellable: false,
+    },
+    async () => {
+      try {
+        const explanation = await generateExplanation(selectedText, apiKey);
+        vscode.window.showInformationMessage(explanation, { modal: true });
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "An unknown error occurred.";
+        vscode.window.showErrorMessage(
+          `Failed to get explanation: ${errorMessage}`
+        );
+      }
     }
-  });
+  );
 }
 
 function shouldSkipFile(document: vscode.TextDocument): boolean {
   const fileName = document.fileName.toLowerCase();
   const skipExtensions = [
-    '.json',
-    '.md',
-    '.txt',
-    '.log',
-    '.xml',
-    '.yaml',
-    '.yml',
+    ".json",
+    ".md",
+    ".txt",
+    ".log",
+    ".xml",
+    ".yaml",
+    ".yml",
   ];
   const skipPaths = [
-    '/.git/',
-    '/node_modules/',
-    '/dist/',
-    '/build/',
-    '/.vscode/',
+    "/.git/",
+    "/node_modules/",
+    "/dist/",
+    "/build/",
+    "/.vscode/",
   ];
 
   // Skip if it's in excluded paths
@@ -330,124 +324,57 @@ function shouldSkipFile(document: vscode.TextDocument): boolean {
 
 async function performAutomatedReview(
   content: string,
-  fileName: string,
+  document: vscode.TextDocument, // Changed from fileName to the whole document
   apiKey: string,
   config: vscode.WorkspaceConfiguration,
   isDiff: boolean = false
 ) {
   try {
-    const persona = config.get('persona', 'Strict Tech Lead');
-    const reviewThreshold = config.get('reviewThreshold', 'medium'); // low, medium, high
+    const persona = config.get("persona", "Strict Tech Lead") as string;
 
-    // Get automated review
-    const reviewData = await generateAutomatedReview(
+    // Get automated review with the new prompt structure
+    const reviewResult = await generateAutomatedReview(
       content,
       persona,
       apiKey,
       isDiff
     );
 
-    if (reviewData && shouldShowReview(reviewData, reviewThreshold)) {
-      await showAutomatedReviewNotification(reviewData, fileName, persona);
+    // Clear old diagnostics for this file
+    diagnosticCollection.delete(document.uri);
+
+    if (reviewResult && reviewResult.issues && reviewResult.issues.length > 0) {
+      const diagnostics = reviewResult.issues.map((issue: any) => {
+        const range = new vscode.Range(
+          issue.lineNumber - 1,
+          0, // line numbers are 1-based, Range is 0-based
+          issue.lineNumber - 1,
+          document.lineAt(issue.lineNumber - 1).text.length
+        );
+
+        const severity =
+          issue.severity === "high"
+            ? vscode.DiagnosticSeverity.Error
+            : issue.severity === "medium"
+            ? vscode.DiagnosticSeverity.Warning
+            : vscode.DiagnosticSeverity.Information;
+
+        const diagnostic = new vscode.Diagnostic(
+          range,
+          issue.message,
+          severity
+        );
+        diagnostic.source = "CodeCritter";
+        return diagnostic;
+      });
+
+      diagnosticCollection.set(document.uri, diagnostics);
     }
   } catch (error) {
-    console.error('Error in automated review:', error);
-  }
-}
-
-function shouldShowReview(reviewData: ReviewData, threshold: string): boolean {
-  if (!reviewData.severity) return true;
-
-  const severityLevels = { low: 1, medium: 2, high: 3 };
-  const thresholdLevel =
-    severityLevels[threshold as keyof typeof severityLevels] || 2;
-  const reviewSeverity =
-    severityLevels[reviewData.severity as keyof typeof severityLevels] || 2;
-
-  return reviewSeverity >= thresholdLevel;
-}
-
-async function showAutomatedReviewNotification(
-  reviewData: ReviewData,
-  fileName: string,
-  persona: string
-) {
-  const message = getAutoReviewMessage(persona, reviewData, fileName);
-
-  const action = await vscode.window.showInformationMessage(
-    message,
-    { modal: false },
-    'Show Details',
-    'Ignore',
-    'Disable Auto Review'
-  );
-
-  switch (action) {
-    case 'Show Details':
-      await showDetailedReview(reviewData, fileName);
-      break;
-    case 'Disable Auto Review':
-      const config = vscode.workspace.getConfiguration('codecritter');
-      await config.update(
-        'autoReviewEnabled',
-        false,
-        vscode.ConfigurationTarget.Global
-      );
-      vscode.window.showInformationMessage(
-        "Auto Review disabled. Use 'CodeCritter: Toggle Auto Review' to re-enable."
-      );
-      break;
-    case 'Ignore':
-    default:
-      break;
-  }
-}
-
-async function showDetailedReview(reviewData: ReviewData, fileName: string) {
-  const panel = vscode.window.createWebviewPanel(
-    'codecritterAutoReview',
-    `CodeCritter: ${fileName}`,
-    vscode.ViewColumn.Beside,
-    { enableScripts: true }
-  );
-
-  panel.webview.html = getAutoReviewWebviewContent(reviewData, fileName);
-}
-
-function getAutoReviewMessage(
-  persona: string,
-  reviewData: ReviewData,
-  fileName: string
-): string {
-  const summary = reviewData.review?.summary || 'Code analysis complete';
-  const shortFileName = path.basename(fileName);
-
-  switch (persona) {
-    case 'Supportive Mentor':
-      return `Great work on ${shortFileName}! I noticed some areas where we could improve. ${summary.substring(
-        0,
-        100
-      )}...`;
-    case 'Sarcastic Reviewer':
-      return `Well, well... ${shortFileName} could use some attention. ${summary.substring(
-        0,
-        100
-      )}...`;
-    case 'Code Poet':
-      return `The code in ${shortFileName} has potential for greater elegance. ${summary.substring(
-        0,
-        100
-      )}...`;
-    case 'Paranoid Security Engineer':
-      return `SECURITY SCAN: ${shortFileName} requires attention! ${summary.substring(
-        0,
-        100
-      )}...`;
-    case 'Strict Tech Lead':
-    default:
-      return `Code review for ${shortFileName}: ${summary.substring(
-        0,
-        100
-      )}...`;
+    console.error("Error in automated review:", error);
+    vscode.window.setStatusBarMessage(
+      "CodeCritter: Error performing review.",
+      5000
+    );
   }
 }

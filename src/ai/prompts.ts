@@ -6,19 +6,15 @@ export function getAutomatedReviewPrompt(
   const contentType = isDiff ? 'code changes (diff)' : 'code';
   const baseInstruction = `
     You are performing an automated code review on ${contentType}.
-    Analyze and provide feedback in pure JSON format with these keys:
-    1. "review": Object with "summary", "critique", "suggestions" strings
-    2. "productionRisk": Array of objects with "risk" string and "isSafe" boolean
-    3. "severity": String - "low", "medium", or "high" based on issues found
+    Analyze the provided code and respond in pure JSON format.
+    The JSON object must have one top-level key: "issues".
+    "issues" should be an array of objects, where each object has:
+    1. "lineNumber": The specific line number where the issue is found.
+    2. "severity": A string: "low", "medium", or "high".
+    3. "message": A concise, one-sentence description of the issue.
 
-    Focus on:
-    - Code quality and maintainability
-    - Potential bugs or logic errors
-    - Performance concerns
-    - Security vulnerabilities
-    - Best practices violations
-
-    Keep feedback concise but actionable.
+    If there are no issues, return an empty array: { "issues": [] }.
+    Focus on code quality, potential bugs, and best practices.
   `;
 
   const personaContext = getPersonaContext(persona);
