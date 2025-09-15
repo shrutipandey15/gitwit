@@ -29,7 +29,7 @@ export function parseAndValidateJsonResponse(rawText: string): any {
     throw new Error(`Failed to parse AI response as JSON: ${message}`);
   }
 
-  if (Array.isArray(parsedJson.issues)) {
+  if (Array.isArray(parsedJson.issues) && parsedJson.hasOwnProperty('isClean')) {
     return parsedJson;
   }
 

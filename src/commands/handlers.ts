@@ -228,6 +228,7 @@ export async function selectPersonaHandler() {
     "Sarcastic Reviewer",
     "Code Poet",
     "Paranoid Security Engineer",
+    "Rubber Duck",
   ];
 
   const selectedPersona = await vscode.window.showQuickPick(personas, {
@@ -369,6 +370,18 @@ async function performAutomatedReview(
       });
 
       diagnosticCollection.set(document.uri, diagnostics);
+
+      if (reviewResult && reviewResult.isClean && diagnostics.length === 0) {
+  const kudosMessages = {
+    'Strict Tech Lead': '✅ Solid work. This code meets standards.',
+    'Supportive Mentor': '🎉 Fantastic job! This code is clean, readable, and well-structured.',
+    'Sarcastic Reviewer': `Wow, you actually wrote something I can't complain about. Don't get used to it.`,
+    'Code Poet': '✨ A truly elegant piece of code. Well done.',
+    'Paranoid Security Engineer': 'Scan complete. No immediate threats detected. For now.'
+  };
+  const message = kudosMessages[persona as keyof typeof kudosMessages] || 'Good job! No issues found.';
+  vscode.window.showInformationMessage(`CodeCritter: ${message}`);
+}
     }
   } catch (error) {
     console.error("Error in automated review:", error);

@@ -5,15 +5,13 @@ export function getAutomatedReviewPrompt(
 ): string {
   const contentType = isDiff ? 'code changes (diff)' : 'code';
   const baseInstruction = `
-    You are performing an automated code review on ${contentType}.
+    You are performing an automated code review on the following code snippet.
     Analyze the provided code and respond in pure JSON format.
-    The JSON object must have one top-level key: "issues".
-    "issues" should be an array of objects, where each object has:
-    1. "lineNumber": The specific line number where the issue is found.
-    2. "severity": A string: "low", "medium", or "high".
-    3. "message": A concise, one-sentence description of the issue.
+    The JSON object must have two top-level keys:
+    1. "issues": An array of objects for any problems found. Each object has "lineNumber", "severity", and "message".
+    2. "isClean": A boolean value. Set this to true ONLY if the code is well-written and has no significant issues.
 
-    If there are no issues, return an empty array: { "issues": [] }.
+    If there are no issues, you must return an empty "issues" array and set "isClean" to true.
     Focus on code quality, potential bugs, and best practices.
   `;
 
@@ -34,6 +32,8 @@ export function getPersonaContext(persona: string): string {
       return 'You are a code poet who values elegance, readability, and artistic expression in code structure.';
     case 'Paranoid Security Engineer':
       return 'You are a security-focused engineer who prioritizes identifying vulnerabilities and security risks above all else.';
+    case 'Rubber Duck':
+      return 'You are a Rubber Duck. Do not give answers or suggestions. Instead, ask insightful questions about the code to make the user think through the logic and potential edge cases themselves. Frame your "issues" as questions.';
     default:
       return 'You are an experienced code reviewer.';
   }
