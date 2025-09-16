@@ -177,6 +177,8 @@ export async function setupAutomatedReviewSystem(
 
   context.subscriptions.push(
     vscode.workspace.onDidSaveTextDocument(async (document) => {
+      console.log(`CodeCritter: File saved: ${document.fileName}. Kicking off auto-review...`);
+
       const config = vscode.workspace.getConfiguration("codecritter");
       const autoReviewEnabled = config.get("autoReviewEnabled", true);
       const userApiKey = config.get("apiKey") as string;
@@ -186,6 +188,8 @@ export async function setupAutomatedReviewSystem(
       }
 
       if (shouldSkipFile(document)) {
+        console.log(`CodeCritter: Skipping file ${document.fileName} based on rules.`);
+
         return;
       }
 
@@ -204,7 +208,8 @@ export async function setupAutomatedReviewSystem(
           currentContent,
           document,
           userApiKey,
-          config
+          config,
+          context
         );
         lastReviewedContent.set(filePath, currentContent);
       } catch (error) {
@@ -220,6 +225,8 @@ export async function setupAutomatedReviewSystem(
 }
 
 export async function selectPersonaHandler() {
+  console.log('CodeCritter: User initiated persona selection.');
+
   const config = vscode.workspace.getConfiguration("codecritter");
 
   const personas = [
@@ -245,6 +252,8 @@ export async function selectPersonaHandler() {
       `CodeCritter persona set to: ${selectedPersona}`
     );
   }
+      console.log(`CodeCritter: Persona saved to settings -> ${selectedPersona}`);
+
 }
 
 export async function explainCodeHandler() {
@@ -283,6 +292,15 @@ export async function explainCodeHandler() {
         );
       }
     }
+  );
+}
+
+// Add this new handler function to the file
+export function showStatsHandler(context: vscode.ExtensionContext) {
+  const stats = context.globalState.get('codeCritterStats', { kudos: 0, issuesFixed: 0 });
+  vscode.window.showInformationMessage(
+    `📊 CodeCritter Stats | Kudos Received: ${stats.kudos}`,
+    { modal: true }
   );
 }
 
@@ -325,69 +343,71 @@ function shouldSkipFile(document: vscode.TextDocument): boolean {
 
 async function performAutomatedReview(
   content: string,
-  document: vscode.TextDocument, // Changed from fileName to the whole document
+  document: vscode.TextDocument,
   apiKey: string,
   config: vscode.WorkspaceConfiguration,
+  context: vscode.ExtensionContext,
   isDiff: boolean = false
 ) {
+  console.log(`CodeCritter: [Auto-Review] Starting review for ${document.fileName}.`);
   try {
-    const persona = config.get("persona", "Strict Tech Lead") as string;
+    const persona = config.get('persona', 'Strict Tech Lead') as string;
+    console.log(`CodeCritter: [Auto-Review] Using persona: ${persona}`);
 
-    // Get automated review with the new prompt structure
     const reviewResult = await generateAutomatedReview(
       content,
       persona,
       apiKey,
       isDiff
     );
+    console.log('CodeCritter: [Auto-Review] AI response received:', JSON.stringify(reviewResult, null, 2));
 
-    // Clear old diagnostics for this file
+    // MOVED DECLARATION HERE
+    const diagnostics: vscode.Diagnostic[] = [];
     diagnosticCollection.delete(document.uri);
 
     if (reviewResult && reviewResult.issues && reviewResult.issues.length > 0) {
-      const diagnostics = reviewResult.issues.map((issue: any) => {
-        const range = new vscode.Range(
-          issue.lineNumber - 1,
-          0, // line numbers are 1-based, Range is 0-based
-          issue.lineNumber - 1,
-          document.lineAt(issue.lineNumber - 1).text.length
-        );
+      for (const issue of reviewResult.issues) {
+        const line = issue.lineNumber - 1;
+        if (line < 0 || line >= document.lineCount) {
+          console.warn(`CodeCritter: AI returned an out-of-bounds line number (${issue.lineNumber}) and it was ignored.`);
+          continue;
+        }
 
-        const severity =
-          issue.severity === "high"
-            ? vscode.DiagnosticSeverity.Error
-            : issue.severity === "medium"
-            ? vscode.DiagnosticSeverity.Warning
-            : vscode.DiagnosticSeverity.Information;
-
-        const diagnostic = new vscode.Diagnostic(
-          range,
-          issue.message,
-          severity
-        );
-        diagnostic.source = "CodeCritter";
-        return diagnostic;
-      });
-
+        const range = new vscode.Range(line, 0, line, document.lineAt(line).text.length);
+        const severity = issue.severity === 'high' ? vscode.DiagnosticSeverity.Error :
+                         issue.severity === 'medium' ? vscode.DiagnosticSeverity.Warning :
+                         vscode.DiagnosticSeverity.Information;
+        
+        const diagnostic = new vscode.Diagnostic(range, issue.message, severity);
+        diagnostic.source = 'CodeCritter';
+        diagnostics.push(diagnostic); // PUSH to the array
+      }
       diagnosticCollection.set(document.uri, diagnostics);
-
-      if (reviewResult && reviewResult.isClean && diagnostics.length === 0) {
-  const kudosMessages = {
-    'Strict Tech Lead': '✅ Solid work. This code meets standards.',
-    'Supportive Mentor': '🎉 Fantastic job! This code is clean, readable, and well-structured.',
-    'Sarcastic Reviewer': `Wow, you actually wrote something I can't complain about. Don't get used to it.`,
-    'Code Poet': '✨ A truly elegant piece of code. Well done.',
-    'Paranoid Security Engineer': 'Scan complete. No immediate threats detected. For now.'
-  };
-  const message = kudosMessages[persona as keyof typeof kudosMessages] || 'Good job! No issues found.';
-  vscode.window.showInformationMessage(`CodeCritter: ${message}`);
-}
     }
+    
+    if (reviewResult && reviewResult.isClean && diagnostics.length === 0) {
+        console.log('CodeCritter: [Auto-Review] Code is clean. Displaying kudos.');
+        const kudosMessages = {
+          'Strict Tech Lead': '✅ Solid work. This code meets standards.',
+          'Supportive Mentor': '🎉 Fantastic job! This code is clean, readable, and well-structured.',
+          'Sarcastic Reviewer': `Wow, you actually wrote something I can't complain about. Don't get used to it.`,
+          'Code Poet': '✨ A truly elegant piece of code. Well done.',
+          'Paranoid Security Engineer': 'Scan complete. No immediate threats detected. For now.',
+          'Rubber Duck': 'Everything seems to be in its place. What assumptions are you making here?'
+        };
+        const message = kudosMessages[persona as keyof typeof kudosMessages] || 'Good job! No issues found.';
+        vscode.window.showInformationMessage(`CodeCritter: ${message}`);
+
+        const stats = context.globalState.get('codeCritterStats', { kudos: 0, issuesFixed: 0 });
+        stats.kudos += 1;
+        context.globalState.update('codeCritterStats', stats);
+    } else if (diagnostics.length > 0) {
+        console.log(`CodeCritter: [Auto-Review] Found ${diagnostics.length} issues. Displaying diagnostics.`);
+    }
+
   } catch (error) {
-    console.error("Error in automated review:", error);
-    vscode.window.setStatusBarMessage(
-      "CodeCritter: Error performing review.",
-      5000
-    );
+    console.error('CodeCritter: [Auto-Review] An error occurred.', error);
+    vscode.window.setStatusBarMessage('CodeCritter: Error performing review.', 5000);
   }
 }

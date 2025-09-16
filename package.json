@@ -55,6 +55,11 @@
         "command": "codecritter.explainCode",
         "title": "CodeCritter: Explain This Code",
         "category": "CodeCritter"
+      },
+      {
+        "command": "codecritter.showStats",
+        "title": "Show My Stats",
+        "category": "CodeCritter"
       }
     ],
     "menus": {

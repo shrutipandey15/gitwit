@@ -86,24 +86,34 @@ export function parseAndValidateJsonResponse(rawText: string): any {
     isDiff: boolean = false
   ): Promise<any> {
     if (isCircuitBreakerOpen()) {
+          console.log('CodeCritter: [AI] Circuit breaker is open. Blocking call.');
+
       throw new Error('Service is currently unavailable. Please try again later.');
     }
   
     try {
       const prompt = getAutomatedReviewPrompt(content, persona, isDiff);
+          console.log(`CodeCritter: [AI] Sending prompt for automated review (Persona: ${persona}).`);
+
       const result = await retryWithBackoff(async () => {
         const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
         const result = await model.generateContent(prompt);
         const response = await result.response;
         const text = response.text();
+              console.log('CodeCritter: [AI] Raw response from API:', text);
+
         return parseAndValidateJsonResponse(text);
       });
   
       recordSuccess();
+          console.log('CodeCritter: [AI] Successfully parsed AI response.');
+
       return result;
     } catch (error) {
       recordFailure();
+          console.error('CodeCritter: [AI] Failed to get or parse AI response.', error);
+
       throw error;
     }
   }
