@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2025-09-17
+
+### Added
+- **Hybrid Review System**: Implemented a revolutionary dual-layer code review that combines instant ESLint checks with deeper AI analysis
+- **Real-time Code Review on Save**: Automatic code review triggers every time you save a file, providing instant feedback
+- **Interactive Persona Selector**: Click the persona name in the status bar to dynamically switch between different reviewer personalities
+- **New Rubber Duck Persona**: Added the classic "Rubber Duck" reviewer persona for rubber duck debugging-style code reviews
+- **Code Explanation Feature**: New right-click context menu option "CodeCritter: Explain This Code" to get plain-English explanations of complex code blocks
+- **Smart Commit Assistant**: AI-powered commit message generation with one-click stage and commit functionality
+- **Enhanced Status Bar Integration**: Real-time status updates and persona display in the VS Code status bar
+- **Inline Diagnostics**: Code review feedback now appears directly in the editor as inline diagnostics and suggestions
+- **Manual Review on Demand**: Get comprehensive code reviews anytime with the "Get Manual Review" button
+- **Production Risk Assessment**: Enhanced risk analysis with clear visual indicators for production readiness
+
+### Changed
+- **Improved User Experience**: Streamlined the entire workflow from a developer's perspective, following Alex's journey from morning setup to end-of-day commits
+- **Enhanced Documentation Generation**: More sophisticated docstring generation with better context awareness
+- **Refactored Extension Logic**: Major code refactoring for better maintainability and performance
+- **Modern UI/UX**: Updated interface design for better visual feedback and user interaction
+
+### Fixed
+- **Web Bundling Issues**: Resolved compatibility issues with hybrid review system using ESLint
+- **Extension Stability**: Multiple bug fixes and performance improvements for more reliable operation
+- **Gamification Features**: Added positive reinforcement system to make code reviews more engaging
+
+### Technical Improvements
+- **Architecture Modernization**: Complete overhaul of the extension architecture for better scalability
+- **Performance Optimization**: Improved response times and reduced resource usage
+- **Error Handling**: Enhanced error handling and user feedback mechanisms
+
 ## [1.1.0] - 2025-07-17
 
 ### Added

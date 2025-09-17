@@ -1,180 +1,92 @@
-# CodeCritter: Your AI Code Review Companion
+# 🐾 CodeCritter: Your AI Code Review Companion
 
-CodeCritter is a VS Code extension that acts as an AI-powered code reviewer, helping you improve your code's quality, style, and security. With multiple reviewer personas, you can get tailored feedback, from a strict architectural analysis to supportive mentorship.
+Ever wish you had a second pair of eyes on your code before the real, human code review? Tired of those little nitpicks that always seem to slip through, or that sinking feeling when you push code you're not 100% confident in?
 
-## 🎬 Demo
+That's exactly why I built CodeCritter. It's an AI-powered sidekick that lives in your VS Code editor and acts as your personal code reviewer, documentation assistant, and refactoring partner. It's here to help you ship better code with less stress.
+
+## 🎬 See It in Action
 
 ![CodeCritter Demo](https://github.com/shrutipandey15/gitwit/blob/main/final_demo.gif?raw=true)
 
-## ✨ Features
+## ✨ What's in the Toolbox?
 
-- **🤖 AI-Powered Code Review**: Get comprehensive code analysis with summary, critique, and suggestions
-- **👥 Multiple Reviewer Personas**: Choose from 5 distinct personalities:
-  - **Strict Tech Lead** - Architectural focus and best practices
-  - **Supportive Mentor** - Encouraging feedback with learning opportunities
-  - **Sarcastic Reviewer** - Witty and direct feedback
-  - **Code Poet** - Artistic and elegant code suggestions
-  - **Paranoid Security Engineer** - Security-focused analysis
-- **🔒 Security Analysis**: Production risk assessment with safety indicators
-- **📝 Docstring Generation**: Auto-generate professional documentation
-- **📋 Copy to Clipboard**: Export reviews as Markdown for PRs
-- **🔑 Secure API Key Storage**: Your Gemini API key is stored locally in VS Code settings
+CodeCritter isn't just a linter; it's a full suite of tools designed to automate the tedious parts of coding so you can focus on the fun parts.
 
-## 🚀 Quick Start
+**The Hybrid Reviewer** 🤖 The moment you save a file, you get the best of both worlds. An instant ESLint check catches common mistakes, followed by a deeper AI analysis that looks at logic, potential bugs, and architecture.
 
-1. **Install the extension** from the VS Code Marketplace
-2. **Get a Gemini API key** from [Google AI Studio](https://makersuite.google.com/app/apikey)
-3. **Open Command Palette** (`Ctrl+Shift+P` or `Cmd+Shift+P`)
-4. **Run** `CodeCritter: Start Review`
-5. **Add your API key** in the Settings section
-6. **Paste your code** and get instant feedback!
+**The Persona Selector** 🎭 Tired of dry, robotic feedback? Click the persona name in the status bar and choose who reviews your code. Get roasted by the Sarcastic Reviewer, get a lesson from the Strict Tech Lead, or get some encouragement from the Supportive Mentor.
 
-## 🛠️ How It Works
+**The Docstring Drone** 📝 Stop writing boilerplate docs. Paste a function into the CodeCritter panel and get a professional docstring generated for you instantly.
 
-CodeCritter is now a **standalone extension** that communicates directly with Google's Gemini AI API. No separate backend server needed!
+**The Code Explainer** 🤔 Highlight a confusing block of legacy code, right-click, and select CodeCritter: Explain This Code. Get a simple, plain-English explanation in seconds.
 
-### The Extension Architecture
+**The Commit Assistant** ✅ When you've made some changes, CodeCritter will analyze your work and suggest a commit message. If you like it, one click stages and commits your work.
 
-- **Direct API Integration**: The extension communicates directly with Gemini AI
-- **Circuit Breaker Pattern**: Handles API failures gracefully with automatic recovery
-- **Retry Logic**: Implements exponential backoff for reliable service
-- **Secure Storage**: API keys are stored securely in VS Code's configuration
+## 🚀 A Developer's Guide to Using CodeCritter
 
-### Key Components
+Meet Alex. Alex is a developer who loves to code but gets bogged down by repetitive tasks and the dread of upcoming code reviews. This is the story of how CodeCritter became her AI sidekick.
 
-1. **Webview Interface**: Modern React + Tailwind CSS UI
-2. **AI Service**: Direct integration with Google Gemini 1.5 Flash
-3. **Prompt Engineering**: Specialized prompts for each reviewer persona
-4. **Error Handling**: Robust error handling and user feedback
+### ☕ Morning Coffee & Setup (5 minutes)
 
-## 🔧 Installation & Setup
+**Install the Tool** Alex opens the Extensions view in VS Code (Ctrl+Shift+X), searches for CodeCritter, and hits Install. Easy.
 
-### Method 1: VS Code Marketplace (Recommended)
-1. Open VS Code
-2. Go to Extensions (`Ctrl+Shift+X`)
-3. Search for "COdedCritter"
-4. Click "Install"
+**Grab the API Key** She heads over to [Google AI Studio](https://makersuite.google.com/app/apikey) and grabs her free Gemini API key.
 
-### Method 2: Manual Installation
-1. Download the `.vsix` file from releases
-2. Open VS Code
-3. Run `Extensions: Install from VSIX...` from Command Palette
-4. Select the downloaded file
+**Plug it In** In VS Code, she opens the Command Palette (Ctrl+Shift+P) and runs CodeCritter: Start Review. In the panel that opens, she pastes her key into the API Settings section and clicks Save. Setup is done before her coffee cools.
 
-### Getting Your API Key
-1. Visit [Google AI Studio](https://makersuite.google.com/app/apikey)
-2. Sign in with your Google account
-3. Create a new API key
-4. Copy the key and paste it in CodeCritter's settings
+### 💻 Mid-day: The Coding Session
 
-## 📖 Usage Guide
+**The Magic Happens on Save** As Alex works on a file and saves it, ESLint instantly flags an unused variable, which she fixes. A moment later, the AI Reviewer suggests a small logical improvement right in her editor. It feels like a mini code review happening in real-time.
 
-### Basic Review Process
-1. **Open COdeCritter**: Use Command Palette → `CodeCritter: Start Review`
-2. **Add API Key**: Go to Settings section and save your Gemini API key
-3. **Paste Code**: Add your code snippet in the text area
-4. **Select Persona**: Choose your preferred reviewer style
-5. **Get Review**: Click "Get Review" for comprehensive analysis
-6. **Copy Results**: Use "Copy Review as Markdown" for documentation
+### 🔍 Afternoon: Tackling a Tricky Function
 
-### Reviewer Personas Explained
+**"What Does This Even Do?"** Alex finds a confusing block of legacy code, highlights it, and right-clicks to use CodeCritter: Explain This Code. A simple explanation appears, and she's back on track in seconds.
 
-#### 🏗️ Strict Tech Lead
-- Focus on architecture and scalability
-- Emphasizes best practices and patterns
-- Identifies potential technical debt
+**Time to Document** She pastes the function into the CodeCritter panel and clicks Generate Docstring. A perfect, professional docstring appears.
 
-#### 🤝 Supportive Mentor
-- Encouraging and educational approach
-- Explains the "why" behind suggestions
-- Great for learning and improvement
+**Getting a Second Opinion** Before moving on, she clicks Get Manual Review. The AI provides a full report with a "Production Risk" assessment. ✅ All clear!
 
-#### 😏 Sarcastic Reviewer
-- Witty and direct feedback
-- Points out obvious issues with humor
-- Keeps reviews entertaining
+### 🌙 End of Day: Wrapping Up
 
-#### 🎨 Code Poet
-- Focuses on code elegance and readability
-- Artistic approach to code structure
-- Emphasizes beautiful, clean code
+**A Perfect Commit, Every Time** Just as Alex is about to type git commit, CodeCritter suggests a perfectly formatted message. She clicks the "Commit" button, and her work is staged and committed instantly.
 
-#### 🔒 Paranoid Security Engineer
-- Security-first analysis
-- Identifies vulnerabilities and risks
-- Focuses on production safety
+**Bonus: A Change of Pace** For fun, Alex clicks the persona name in the status bar. Tomorrow, she's rolling with the Sarcastic Reviewer. Code reviews just got a lot more interesting.
 
-### Production Risk Assessment
-Each review includes a "Production Risk Watch" section that:
-- ✅ **Safe**: No production concerns
-- ⚠️ **Risk**: Potential production issues identified
-- Lists specific risks with safety indicators
+## 🎯 The Vision (Our Roadmap)
 
-## 🔒 Privacy & Security
+CodeCritter is just getting started. The goal is to evolve it into a full "Code-Forge" that actively helps you write and refactor code, not just review it.
 
-- **Local Storage**: API keys are stored locally in VS Code settings
-- **No Data Collection**: GitWit doesn't collect or store your code
-- **Direct API Calls**: Your code is sent directly to Google's Gemini API
-- **Secure Transport**: All API calls use HTTPS encryption
+- [ ] **The Refactor-Bot 9000**: Programmatically refactor code to modernize JavaScript and extract clean functions.
+- [ ] **The Boilerplate Obliterator**: Generate unit tests, create TypeScript types from JSON, and kill repetitive setup.
+- [ ] **The Documentation Drone**: Generate full-file documentation, not just snippets.
+- [ ] **Support for More AIs**: Add OpenAI's GPT, Anthropic's Claude, and others.
 
-## 🛠️ Development
+## 🤝 Want to Help Build It?
 
-### Building from Source
-```bash
-git clone https://github.com/shrutipandey15/gitwit.git
-cd gitwit
-npm install
-npm run compile
-```
+This is an open-source project, and contributions are always welcome!
 
-### Testing the Extension
-```bash
-npm run test
-```
+1. Fork the repo.
 
-### Packaging
-```bash
-npm install -g vsce
-vsce package
-```
+2. Create a feature branch:
+    ```bash
+     `git checkout -b feature/amazing-feature`
 
-## 🤝 Contributing
+3. Commit your changes: 
+    ```bash
+    `git commit -m 'Add some amazing feature'`
 
-I welcome contributions! Please see my [Contributing Guide](CONTRIBUTING.md) for details.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+4. Push to the branch: 
+    ```bash
+    `git push origin feature/amazing-feature`
+    
+5. Open a Pull Request!
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-- **Issues**: Report bugs on [GitHub Issues](https://github.com/shrutipandey15/gitwit/issues)
-- **Discussions**: Ask questions in [GitHub Discussions](https://github.com/shrutipandey15/gitwit/discussions)
-- **Email**: Contact the maintainer at [email]
-
-## 🎯 Roadmap
-
-- [ ] Support for more AI providers (OpenAI, Claude)
-- [ ] Custom prompt templates
-- [ ] Integration with GitHub Pull Requests
-- [ ] Code quality metrics
-- [ ] Team collaboration features
-
-## 📊 Stats
-
-- **Languages Supported**: All programming languages
-- **AI Model**: Google Gemini 1.5 Flash
-- **VS Code Version**: 1.85.0+
-- **License**: MIT
+This project is licensed under the MIT License. See the [LICENSE]() file for details.
 
 ---
 
-Made with ❤️ by [Shruti Pandey](https://github.com/shrutipandey15)
+Made with ❤️ by Shruti Pandey
 
-*CodeCritter - Making code reviews intelligent, one line at a time.*
+**CodeCritter** – Making code reviews a little less painful, and a lot more fun :)
