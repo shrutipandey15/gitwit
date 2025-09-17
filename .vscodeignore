@@ -9,13 +9,11 @@ vsc-extension-quickstart.md
 **/*.map
 **/*.ts
 **/.vscode-test.*
-
 backend/
-
 node_modules/
 **/node_modules/
-
 .git/
 .gitignore
 *.vsix
 .vscode-test/
+out/
