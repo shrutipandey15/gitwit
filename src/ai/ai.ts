@@ -11,7 +11,8 @@ import {
   getDocstringPrompt,
   getPrompt,
   getExplanationPrompt,
-  getGenerateFileDocsPrompt
+  getGenerateFileDocsPrompt,
+  getGenerateUnitTestsPrompt
 } from "./prompts";
 
 export function parseAndValidateJsonResponse(rawText: string): any {
@@ -235,6 +236,29 @@ export async function generateFileDocs(code: string, apiKey: string): Promise<st
     return result;
   } catch (error) {
     console.error("[AI Service] Error after retries, recording failure:", error);
+    recordFailure();
+    throw error;
+  }
+}
+
+export async function generateUnitTests(code: string, apiKey: string, framework: string): Promise<string> {
+  if (isCircuitBreakerOpen()) {
+    throw new Error("Service is currently unavailable. Please try again later.");
+  }
+
+  try {
+    const prompt = getGenerateUnitTestsPrompt(code, framework);
+    const result = await retryWithBackoff(async () => {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      return response.text();
+    });
+
+    recordSuccess();
+    return result;
+  } catch (error) {
     recordFailure();
     throw error;
   }

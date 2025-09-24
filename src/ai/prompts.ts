@@ -128,3 +128,27 @@ export function getGenerateFileDocsPrompt(code: string): string {
     \`\`\`
   `;
 }
+
+export function getGenerateUnitTestsPrompt(code: string, framework: string): string {
+  const assertionStyle = framework.toLowerCase().includes('mocha') 
+    ? "the Chai assertion library (e.g., `expect(result).to.equal('value');`)" 
+    : "its standard assertion library (e.g., `expect(result).toEqual('value');`)";
+
+  return `
+    You are an expert software engineer specializing in Test-Driven Development.
+    Analyze the following code snippet and generate a comprehensive suite of unit tests for it using the ${framework} testing framework.
+
+    The test suite should:
+    1.  Use ${assertionStyle}.
+    2.  Cover the primary "happy path" functionality.
+    3.  Include tests for edge cases (e.g., empty inputs, null values, invalid data types).
+    4.  Include tests for expected error handling or failure scenarios.
+    5.  Be written in clean, modern TypeScript/JavaScript.
+    6.  Format the response as a single block of code ready to be pasted into a test file.
+
+    Code to test:
+    \`\`\`
+    ${code}
+    \`\`\`
+  `;
+}

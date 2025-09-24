@@ -7,6 +7,7 @@ import {
   analyzeAndSuggestCommit,
   generateAutomatedReview,
   generateFileDocs,
+  generateUnitTests
 } from "../ai/ai";
 import { executeCommand } from "../utils/command";
 import { ReviewData } from "../types";
@@ -503,6 +504,69 @@ export async function generateFileDocsHandler(context: vscode.ExtensionContext) 
       console.error("[Command Handler] Caught final error before showing to user:", error);
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
       vscode.window.showErrorMessage(`Failed to generate documentation: ${errorMessage}`);
+    }
+  });
+}
+
+export async function generateUnitTestsHandler(context: vscode.ExtensionContext) {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor || editor.selection.isEmpty) {
+    vscode.window.showInformationMessage("Please select a function or class to generate tests for.");
+    return;
+  }
+
+  const config = vscode.workspace.getConfiguration("codecritter");
+  const apiKey = config.get<string>("apiKey");
+  if (!apiKey) {
+    vscode.window.showWarningMessage("Please set your Gemini API key first.");
+    return;
+  }
+
+  const selectedCode = editor.document.getText(editor.selection);
+  const sourceFileName = editor.document.fileName;
+
+  let framework = '';
+  let language = '';
+  const extension = path.extname(sourceFileName);
+
+  switch (extension) {
+    case '.js':
+      framework = 'Mocha (JavaScript)';
+      language = 'javascript';
+      break;
+    case '.ts':
+      framework = 'Jest (TypeScript)';
+      language = 'typescript';
+      break;
+    case '.py':
+      framework = 'Pytest (Python)';
+      language = 'python';
+      break;
+    default:
+      vscode.window.showErrorMessage(`CodeCritter does not currently support test generation for '${extension}' files.`);
+      return;
+  }
+
+  vscode.window.showInformationMessage(`Detected ${language} file. Generating tests with ${framework}...`);
+  // ✨ --- End of Auto-detection Logic --- ✨
+
+  await vscode.window.withProgress({
+    location: vscode.ProgressLocation.Notification,
+    title: "CodeCritter is generating unit tests...",
+    cancellable: false,
+  }, async (progress) => {
+    try {
+      const unitTests = await generateUnitTests(selectedCode, apiKey, framework);
+      
+      const doc = await vscode.workspace.openTextDocument({
+        content: unitTests,
+        language: language
+      });
+      await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+      vscode.window.showErrorMessage(`Failed to generate unit tests: ${errorMessage}`);
     }
   });
 }

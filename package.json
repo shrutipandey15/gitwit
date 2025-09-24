@@ -65,6 +65,11 @@
         "command": "codecritter.generateFileDocs",
         "title": "CodeCritter: Document This Code",
         "category": "CodeCritter"
+      },
+      {
+        "command": "codecritter.generateUnitTests",
+        "title": "CodeCritter: Generate Unit Tests",
+        "category": "CodeCritter"
       }
     ],
     "menus": {
@@ -78,7 +83,13 @@
           "when": "editorHasSelection",
           "command": "codecritter.generateFileDocs",
           "group": "navigation"
+        },
+        {
+          "when": "editorHasSelection",
+          "command": "codecritter.generateUnitTests",
+          "group": "navigation"
         }
+
       ]
     },
     "configuration": {
@@ -126,7 +137,19 @@
           "type": "boolean",
           "default": true,
           "description": "Enable automatic commit message suggestions when files are saved"
+        },
+        "codecritter.testFramework": {
+          "type": "string",
+          "default": "Mocha (JavaScript)",
+          "description": "The language and framework to use for generating unit tests.",
+          "enum": [
+            "Mocha (JavaScript)",
+            "Jest (TypeScript)",
+            "Pytest (Python)",
+            "Mocha (JavaScript)"
+          ]
         }
+
       }
     }
   },
