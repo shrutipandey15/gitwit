@@ -110,3 +110,21 @@ export function getExplanationPrompt(code: string): string {
     \`\`\`
   `;
 }
+
+export function getGenerateFileDocsPrompt(code: string): string {
+  return `
+    You are an expert software engineer creating comprehensive documentation for a source file.
+    Analyze the following code and generate a complete Markdown document.
+
+    The documentation should include:
+    1. A high-level summary of the file's purpose.
+    2. A breakdown of each function, class, and method, including its purpose, parameters, and return value.
+    3. Explanations for any complex or non-obvious logic.
+    4. Format the response as a single block of clean, readable Markdown.
+
+    Code:
+    \`\`\`
+    ${code}
+    \`\`\`
+  `;
+}

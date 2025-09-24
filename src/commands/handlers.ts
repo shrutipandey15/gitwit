@@ -5,7 +5,8 @@ import {
   generateReview,
   generateExplanation,
   analyzeAndSuggestCommit,
-  generateAutomatedReview
+  generateAutomatedReview,
+  generateFileDocs,
 } from "../ai/ai";
 import { executeCommand } from "../utils/command";
 import { ReviewData } from "../types";
@@ -453,4 +454,55 @@ async function performAutomatedReview(
     console.error('CodeCritter: [Auto-Review] An error occurred.', error);
     vscode.window.setStatusBarMessage('CodeCritter: Error performing review.', 5000);
   }
+}
+
+export async function generateFileDocsHandler(context: vscode.ExtensionContext) {
+  const originalEditor = vscode.window.activeTextEditor;
+  if (!originalEditor) {
+    vscode.window.showInformationMessage("Please open a file to document.");
+    return;
+  }
+
+  const config = vscode.workspace.getConfiguration("codecritter");
+  const apiKey = config.get<string>("apiKey");
+  if (!apiKey) {
+    vscode.window.showWarningMessage("Please set your Gemini API key in the CodeCritter settings.");
+    return;
+  }
+
+  const entireFileContent = originalEditor.document.getText();
+
+  await vscode.window.withProgress({
+    location: vscode.ProgressLocation.Notification,
+    title: "CodeCritter is generating documentation...",
+    cancellable: false,
+  }, async (progress) => {
+    try {
+      const documentation = await generateFileDocs(entireFileContent, apiKey);
+
+      const doc = await vscode.workspace.openTextDocument({
+        content: documentation,
+        language: 'markdown'
+      });
+      await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
+
+      const selection = await vscode.window.showInformationMessage(
+        "Documentation generated. Insert at top of the original file?",
+        { modal: true },
+        "Yes, Insert"
+      );
+
+      if (selection === "Yes, Insert") {
+        originalEditor.edit(editBuilder => {
+          const documentationAsComment = `/**\n * ${documentation.replace(/\n/g, '\n * ')}\n */\n\n`;
+          editBuilder.insert(new vscode.Position(0, 0), documentationAsComment);
+        });
+      }
+
+    } catch (error) {
+      console.error("[Command Handler] Caught final error before showing to user:", error);
+      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+      vscode.window.showErrorMessage(`Failed to generate documentation: ${errorMessage}`);
+    }
+  });
 }

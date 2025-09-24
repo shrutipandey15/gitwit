@@ -7,6 +7,8 @@ async function retryWithBackoff(operation, maxRetries = 3, baseDelay = 1000) {
             return await operation();
         }
         catch (error) {
+            console.error(`codecritter [Retry Attempt ${attempt + 1}] Raw API Error:`, error);
+
             const isRetryable = error.status === 503 ||
                 error.status === 429 ||
                 (error.status >= 500 && error.status < 600);
