@@ -10,40 +10,9 @@ import {
 import { executeCommand } from "../utils/command";
 import { ReviewData } from "../types";
 import { diagnosticCollection } from "../extension";
-import { ESLint } from "eslint";
-import globals from "globals";
-import * as path from "path";
 
 let isReviewInProgress = false;
 let lastReviewedContent = new Map<string, string>();
-
-async function runLinter(document: vscode.TextDocument, context: vscode.ExtensionContext): Promise<void> {
-    try {
-        const eslintrcPath = path.join(context.extensionPath, '.eslintrc.js');
-
-        const eslint = new ESLint({
-            overrideConfigFile: eslintrcPath,
-        });
-
-        const results = await eslint.lintText(document.getText(), { filePath: document.fileName });
-        const diagnostics: vscode.Diagnostic[] = [];
-        for (const result of results) {
-            for (const message of result.messages) {
-                if (message.line && message.column) {
-                    const line = message.line - 1;
-                    const range = new vscode.Range(line, message.column - 1, line, message.endColumn ? message.endColumn - 1 : 100);
-                    const diagnostic = new vscode.Diagnostic(range, message.message, vscode.DiagnosticSeverity.Warning);
-                    diagnostic.source = 'ESLint';
-                    diagnostics.push(diagnostic);
-                }
-            }
-        }
-        diagnosticCollection.set(document.uri, diagnostics);
-    } catch (error) {
-        console.error("CodeCritter: Error running ESLint:", error);
-        vscode.window.showWarningMessage("CodeCritter: Could not run ESLint. Please check the developer console.");
-    }
-}
 
 export async function startReviewHandler(context: vscode.ExtensionContext) {
     const panel = new WebviewManager(context);
@@ -201,7 +170,6 @@ export async function toggleAutoReviewHandler() {
 }
 
 export async function onDidSaveTextDocumentHandler(document: vscode.TextDocument, context: vscode.ExtensionContext) {
-    await runLinter(document, context);
     console.log(`CodeCritter: File saved: ${document.fileName}.`);
     const config = vscode.workspace.getConfiguration('codecritter');
     const userApiKey = config.get('apiKey') as string;

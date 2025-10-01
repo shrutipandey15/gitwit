@@ -14,10 +14,6 @@ const config = {
   },
   externals: {
     vscode: 'commonjs vscode',
-    'eslint': 'commonjs eslint',
-    '@typescript-eslint/parser': 'commonjs @typescript-eslint/parser',
-    '@typescript-eslint/eslint-plugin': 'commonjs @typescript-eslint/eslint-plugin',
-    'globals': 'commonjs globals'
   },
   resolve: {
     extensions: ['.ts', '.js'],
