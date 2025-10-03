@@ -51,7 +51,7 @@ export function registerCommands(context: vscode.ExtensionContext) {
     generateTestsHandler
   );
     const intelligentRefactorDisposable = vscode.commands.registerCommand(
-    'codecritter.refactorFile',
+    'codecritter.refactor',
     intelligentRefactorHandler
   );
 

@@ -12,7 +12,8 @@ import {
   getPrompt,
   getExplanationPrompt,
   getTestGenerationPrompt,
-  getIntelligentRefactorPrompt
+  getIntelligentRefactorPrompt,
+  getIntelligentSelectionRefactorPrompt
 } from "./prompts";
 import { IntelligentRefactorResponse } from "../types";
 
@@ -230,10 +231,9 @@ export async function generateTests(
     const prompt = getTestGenerationPrompt(code);
     const result = await retryWithBackoff(async () => {
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" }); // Or your preferred model
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       const result = await model.generateContent(prompt);
       const response = await result.response;
-      // Clean up the response to ensure it's just code
       const text = response.text().replace(/```(javascript|typescript)?/g, '').trim();
       return text;
     });
@@ -251,7 +251,6 @@ export async function generateIntelligentRefactoring(
   apiKey: string
 ): Promise<IntelligentRefactorResponse> {
   console.log("CodeCritter: [AI] Starting intelligent file refactoring.");
-  // ... (circuit breaker logic is the same)
 
   try {
     const prompt = getIntelligentRefactorPrompt(code);
@@ -262,7 +261,6 @@ export async function generateIntelligentRefactoring(
       const response = await result.response;
       const text = response.text();
       
-      // The parse function will need to be updated to handle this new shape
       return JSON.parse(text.match(/\{[\s\S]*\}/)![0]);
     });
 
@@ -271,6 +269,42 @@ export async function generateIntelligentRefactoring(
   } catch (error) {
     recordFailure();
     console.error("CodeCritter: [AI] Failed to get intelligent refactoring.", error);
+    throw error;
+  }
+}
+
+export async function generateIntelligentSelectionRefactoring(
+  selection: string,
+  fullCode: string,
+  apiKey: string
+): Promise<IntelligentRefactorResponse> { 
+  console.log("CodeCritter: [AI] Starting intelligent selection refactoring.");
+
+  if (isCircuitBreakerOpen()) {
+    throw new Error("Service is currently unavailable.");
+  }
+
+  try {
+    const prompt = getIntelligentSelectionRefactorPrompt(selection, fullCode);
+
+    const result = await retryWithBackoff(async () => {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error("AI response did not contain a valid JSON object.");
+      }
+      return JSON.parse(jsonMatch[0]);
+    });
+
+    recordSuccess();
+    return result;
+  } catch (error) {
+    recordFailure();
+    console.error("CodeCritter: [AI] Failed to get intelligent selection refactoring.", error);
     throw error;
   }
 }

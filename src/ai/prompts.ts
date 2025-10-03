@@ -154,3 +154,38 @@ export function getIntelligentRefactorPrompt(code: string): string {
     \`\`\`
   `;
 }
+
+export function getIntelligentSelectionRefactorPrompt(selection: string, fullCode: string): string {
+  return `
+    You are an expert software architect. Your primary task is to refactor the selected code snippet ('Code to Refactor') to be cleaner, more efficient, and more maintainable.
+
+    It is crucial that you use the 'Full File Context' to understand the existing architectural patterns, coding style, and conventions. The refactoring should feel consistent with the rest of the file.
+
+    **Output Format:**
+    You MUST respond in a pure JSON format with the following structure:
+    {
+      "refactoredCode": "...",
+      "explanation": "...",
+      "alternativeSuggestion": {
+        "explanation": "...",
+        "code": "..."
+      }
+    }
+
+    **Instructions:**
+    1.  **refactoredCode**: The refactored version of ONLY the 'Code to Refactor'. PRESERVE existing documentation and comments within that selection.
+    2.  **explanation**: A brief summary of the changes made.
+    3.  **alternativeSuggestion**: If a more optimal pattern exists (even if it differs from the file's current style), provide a brief "explanation" and a "code" example. If you have no suggestion, this field can be null.
+
+    ---
+    **Full File Context:**
+    \`\`\`
+    ${fullCode}
+    \`\`\`
+    ---
+    **Code to Refactor:**
+    \`\`\`
+    ${selection}
+    \`\`\`
+  `;
+}

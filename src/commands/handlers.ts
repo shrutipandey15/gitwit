@@ -7,7 +7,8 @@ import {
   analyzeAndSuggestCommit,
   generateAutomatedReview,
   generateTests,
-  generateIntelligentRefactoring
+  generateIntelligentRefactoring,
+  generateIntelligentSelectionRefactoring
 } from "../ai/ai";
 import { executeCommand } from "../utils/command";
 import { ReviewData } from "../types";
@@ -469,16 +470,11 @@ export async function generateTestsHandler() {
   });
 }
 
-// In src/commands/handlers.ts - This is the complete and final function
-
 export async function intelligentRefactorHandler() {
-  console.log('CodeCritter: "Intelligently Refactor File" command triggered.');
+  console.log('CodeCritter: "Intelligently Refactor" command triggered.');
   
   const editor = vscode.window.activeTextEditor;
-  if (!editor) {
-    vscode.window.showInformationMessage("Please open a file to refactor.");
-    return;
-  }
+  if (!editor) { return; }
 
   const config = vscode.workspace.getConfiguration("codecritter");
   const apiKey = config.get<string>("apiKey");
@@ -487,42 +483,36 @@ export async function intelligentRefactorHandler() {
     return;
   }
 
-  const entireFileContent = editor.document.getText();
+  const selection = editor.selection;
+  const isSelection = !selection.isEmpty;
+  const codeToRefactor = isSelection ? editor.document.getText(selection) : editor.document.getText();
+  const fullFileText = editor.document.getText();
 
   await vscode.window.withProgress({
     location: vscode.ProgressLocation.Notification,
-    title: "CodeCritter is analyzing and refactoring the file...",
+    title: `CodeCritter is refactoring ${isSelection ? 'selection' : 'file'}...`,
     cancellable: false,
   }, async () => {
     try {
-      const result = await generateIntelligentRefactoring(entireFileContent, apiKey);
+      const result = isSelection 
+        ? await generateIntelligentSelectionRefactoring(codeToRefactor, fullFileText, apiKey)
+        : await generateIntelligentRefactoring(codeToRefactor, apiKey);
       
+      const rangeToReplace = isSelection ? selection : new vscode.Range(
+        editor.document.positionAt(0),
+        editor.document.positionAt(fullFileText.length)
+      );
+
       await editor.edit(editBuilder => {
-        const fullRange = new vscode.Range(
-          editor.document.positionAt(0),
-          editor.document.positionAt(entireFileContent.length)
-        );
-        editBuilder.replace(fullRange, result.refactoredCode);
+        editBuilder.replace(rangeToReplace, result.refactoredCode);
       });
 
-      let reportContent = `# CodeCritter Refactoring Report\n\n`;
-      reportContent += `## Explanation of Changes\n`;
-      reportContent += `${result.explanation}\n\n`;
-      
+      let reportContent = `# CodeCritter Refactoring Report\n\n## Explanation\n${result.explanation}\n\n`;
       if (result.alternativeSuggestion && result.alternativeSuggestion.code) {
-        reportContent += `## Alternative Architectural Suggestion\n`;
-        reportContent += `${result.alternativeSuggestion.explanation}\n\n`;
-        reportContent += `\`\`\`javascript\n${result.alternativeSuggestion.code}\n\`\`\`\n`;
+        reportContent += `## Alternative Suggestion\n${result.alternativeSuggestion.explanation}\n\n\`\`\`javascript\n${result.alternativeSuggestion.code}\n\`\`\`\n`;
       }
-
-      const reportDocument = await vscode.workspace.openTextDocument({
-        content: reportContent,
-        language: 'markdown'
-      });
-      
+      const reportDocument = await vscode.workspace.openTextDocument({ content: reportContent, language: 'markdown' });
       await vscode.window.showTextDocument(reportDocument, vscode.ViewColumn.Beside);
-
-      console.log('CodeCritter: Successfully applied refactoring and opened detailed report.');
       
     } catch (error) {
       console.error('CodeCritter: Error during intelligent refactoring.', error);
