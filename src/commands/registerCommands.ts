@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { startReviewHandler, toggleAutoReviewHandler, selectPersonaHandler, explainCodeHandler, showStatsHandler, generateTestsHandler, intelligentRefactorHandler } from './handlers';
+import { startReviewHandler, toggleAutoReviewHandler, selectPersonaHandler, explainCodeHandler, showStatsHandler, generateTestsHandler, intelligentRefactorHandler, generateReadmeHandler } from './handlers';
 
 export function registerCommands(context: vscode.ExtensionContext) {
   const personaStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
@@ -55,6 +55,11 @@ export function registerCommands(context: vscode.ExtensionContext) {
     intelligentRefactorHandler
   );
 
+  const generateReadmeDisposal = vscode.commands.registerCommand(
+    'codecritter.generateReadme',
+    generateReadmeHandler
+  );
+
   context.subscriptions.push(
     startReviewDisposable,
     toggleAutoReviewDisposable,
@@ -63,6 +68,7 @@ export function registerCommands(context: vscode.ExtensionContext) {
     explainCodeDisposable,
     showStatsDisposable,
     generateTestsDisposable,
-    intelligentRefactorDisposable
+    intelligentRefactorDisposable,
+    generateReadmeDisposal
   );
 }

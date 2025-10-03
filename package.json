@@ -70,6 +70,11 @@
         "command": "codecritter.refactor",
         "title": "CodeCritter: Intelligently Refactor",
         "category": "CodeCritter"
+      },
+      {
+        "command": "codecritter.generateReadme",
+        "title": "CodeCritter: Generate Project README",
+        "category": "CodeCritter"
       }
     ],
     "menus": {

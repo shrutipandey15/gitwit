@@ -198,3 +198,48 @@ export function getIntelligentSelectionRefactorPrompt(selection: string, fullCod
     \`\`\`
   `;
 }
+
+export function getReadmeGenerationPrompt(packageJson: string | null, entryPointCode: string | null, fileTree: string): string {
+  // Conditionally build the context string
+  let projectContext = `
+    **Project File Structure:**
+    \`\`\`
+    ${fileTree}
+    \`\`\`
+  `;
+
+  if (packageJson) {
+    projectContext += `
+    **package.json:**
+    \`\`\`json
+    ${packageJson}
+    \`\`\`
+    `;
+  }
+
+  if (entryPointCode) {
+    projectContext += `
+    **Main Entry Point Code:**
+    \`\`\`
+    ${entryPointCode}
+    \`\`\`
+    `;
+  }
+
+  return `
+    You are an expert technical writer creating a README.md file.
+    Use the provided project context to generate a comprehensive and user-friendly README in Markdown format.
+
+    **Project Context:**
+    ${projectContext}
+
+    **README Structure:**
+    - A project title and a short, engaging description.
+    - A "Features" or "Purpose" section based on the code and file structure.
+    - An "Installation" or "Setup" section with general instructions.
+    - A "Usage" section explaining how to run or use the project.
+    - If package.json was provided, mention key scripts or dependencies.
+
+    Your response must be ONLY the raw Markdown content for the README.md file.
+  `;
+}

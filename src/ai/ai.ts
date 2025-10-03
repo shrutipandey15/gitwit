@@ -13,7 +13,8 @@ import {
   getExplanationPrompt,
   getTestGenerationPrompt,
   getIntelligentRefactorPrompt,
-  getIntelligentSelectionRefactorPrompt
+  getIntelligentSelectionRefactorPrompt,
+  getReadmeGenerationPrompt
 } from "./prompts";
 import { IntelligentRefactorResponse } from "../types";
 
@@ -309,6 +310,36 @@ export async function generateIntelligentSelectionRefactoring(
   } catch (error) {
     recordFailure();
     console.error("CodeCritter: [AI] Failed to get intelligent selection refactoring.", error);
+    throw error;
+  }
+}
+
+export async function generateReadme(
+  packageJson: string | null,
+  entryPointCode: string | null,
+  fileTree: string,
+  apiKey: string
+): Promise<string> {
+  console.log("CodeCritter: [AI] Starting README generation.");
+  if (isCircuitBreakerOpen()) {
+    throw new Error("Service is currently unavailable.");
+  }
+
+  try {
+    const prompt = getReadmeGenerationPrompt(packageJson, entryPointCode, fileTree);
+    const result = await retryWithBackoff(async () => {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      return response.text().replace(/^```markdown\n|```$/g, '');
+    });
+
+    recordSuccess();
+    return result;
+  } catch (error) {
+    recordFailure();
+    console.error("CodeCritter: [AI] Failed to generate README.", error);
     throw error;
   }
 }
