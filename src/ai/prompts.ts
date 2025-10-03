@@ -76,20 +76,29 @@ export function getDocstringPrompt(code: string): string {
     `;
 }
 
-export function getCommitMessagePrompt(diff: string): string {
+export function getCommitMessagePrompt(diff: string, filePath: string): string {
   return `
-    Your primary task is to generate a clear, conventional commit message for the following code diff.
-    The format must be: <type>(<scope>): <short summary>.
+    You are an expert at writing conventional git commit messages. Your primary task is to generate a clear and concise commit message for the following code diff.
 
-    - Analyze the changes to understand their intent (e.g., adding a feature, fixing a bug, refactoring).
-    - If the changes are reasonable, ALWAYS generate a commit message.
-    - ONLY if the code diff shows extremely low quality, like syntax errors, large blocks of commented-out code, or only whitespace changes, should you decide it's not ready.
+    **Context:**
+    - The changes were made in the file: \`${filePath}\`
+    - Use this file path to infer the correct <scope>. For example, if the path is 'src/auth/utils.ts', the scope could be 'auth' or 'auth-utils'.
 
-    Respond in a pure JSON format.
-    - If you generate a message, the JSON should be: { "ready": true, "commitMessage": "..." }
-    - ONLY in cases of extremely poor quality, the JSON should be: { "ready": false, "reason": "..." }
+    **Format:**
+    The message MUST follow the conventional commit format: \`<type>(<scope>): <short summary>\`
 
-    Diff:
+    **Examples of good commit messages:**
+    - feat(auth): add password reset functionality
+    - fix(parser): handle unexpected null values
+    - refactor(ui): simplify button component styles
+    - docs(readme): update installation instructions
+
+    **Instructions:**
+    - Analyze the diff to understand the intent (feature, fix, refactor, docs, etc.).
+    - Based on the intent and file path, generate ONE high-quality commit message.
+    - Respond in a pure JSON format: \`{ "ready": true, "commitMessage": "..." }\`
+
+    **Code Diff:**
     \`\`\`
     ${diff}
     \`\`\`

@@ -173,14 +173,17 @@ export async function toggleAutoReviewHandler() {
     `CodeCritter Auto Review ${!currentSetting ? "Enabled" : "Disabled"}`
   );
 }
-
 export async function onDidSaveTextDocumentHandler(document: vscode.TextDocument, context: vscode.ExtensionContext) {
     console.log(`CodeCritter: File saved: ${document.fileName}.`);
+    
     const config = vscode.workspace.getConfiguration('codecritter');
     const userApiKey = config.get('apiKey') as string;
+    if (!userApiKey) {
+        console.warn("CodeCritter: Aborting onDidSave handlers because no API key is set.");
+        return;
+    }
 
-    if (!userApiKey) return;
-
+    // --- 1. AUTOMATED REVIEW LOGIC ---
     const autoReviewEnabled = config.get('autoReviewEnabled', true);
     if (autoReviewEnabled && !isReviewInProgress && !shouldSkipFile(document)) {
         isReviewInProgress = true;
@@ -196,9 +199,19 @@ export async function onDidSaveTextDocumentHandler(document: vscode.TextDocument
         }
     }
 
+    // --- 2. COMMIT ASSISTANT QUALITY GATE ---
+    const diagnostics = diagnosticCollection.get(document.uri);
+    const hasErrors = diagnostics?.some(d => d.severity === vscode.DiagnosticSeverity.Error);
+
+    if (hasErrors) {
+        console.log('CodeCritter: Commit assistant skipped because errors were found in the file.');
+        return;
+    }
+
+    // --- 3. COMMIT ASSISTANT LOGIC ---
     const commitAssistEnabled = config.get('commitAssistEnabled', true);
     if (commitAssistEnabled) {
-        console.log(`CodeCritter: Kicking off commit assistant...`);
+        console.log(`CodeCritter: Kicking off commit assistant (no errors found).`);
         const stagedDiff = await executeCommand('git diff --staged');
         const unstagedDiff = await executeCommand('git diff');
         const fullDiff = (stagedDiff + '\n' + unstagedDiff).trim();
@@ -206,7 +219,8 @@ export async function onDidSaveTextDocumentHandler(document: vscode.TextDocument
         if (fullDiff) {
             console.log('CodeCritter: Diff generated for commit assistant.');
             try {
-                const analysis = await analyzeAndSuggestCommit(fullDiff, userApiKey);
+                const analysis = await analyzeAndSuggestCommit(fullDiff, document.fileName, userApiKey);
+
                 if (analysis.ready) {
                     const persona = config.get('persona', 'Strict Tech Lead') as string;
                     const commitMessage = analysis.commitMessage;
@@ -223,7 +237,7 @@ export async function onDidSaveTextDocumentHandler(document: vscode.TextDocument
                 console.error('CodeCritter: Failed to analyze for commit:', error);
             }
         } else {
-            console.log('CodeCritter: No diff found for commit assistant.');
+            console.log('CodeCritter: No diff found, commit assistant finished.');
         }
     }
 }

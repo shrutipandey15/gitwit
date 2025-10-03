@@ -164,23 +164,27 @@ export async function generateDocstring(
 
 export async function analyzeAndSuggestCommit(
   diff: string,
+  filePath: string,
   apiKey: string
 ): Promise<any> {
   if (isCircuitBreakerOpen()) {
-    throw new Error(
-      "Service is currently unavailable. Please try again later."
-    );
+    throw new Error("Service is currently unavailable. Please try again later.");
   }
 
   try {
-    const prompt = getCommitMessagePrompt(diff);
+    const prompt = getCommitMessagePrompt(diff, filePath); 
+
     const result = await retryWithBackoff(async () => {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       const result = await model.generateContent(prompt);
       const response = await result.response;
       const text = response.text();
-      return parseAndValidateJsonResponse(text);
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error("AI response did not contain a valid JSON object.");
+      }
+      return JSON.parse(jsonMatch[0]);
     });
 
     recordSuccess();
