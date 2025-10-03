@@ -27,3 +27,9 @@ export interface ReviewData {
   }[];
   severity?: 'low' | 'medium' | 'high';
 }
+
+export interface IntelligentRefactorResponse {
+  refactoredCode: string;
+  explanation: string;
+  alternativeSuggestion?: string;
+}

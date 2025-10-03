@@ -65,7 +65,12 @@
         "command": "codecritter.generateTests",
         "title": "CodeCritter: Generate Tests",
         "category": "CodeCritter"
-      }
+      },
+          {
+      "command": "codecritter.refactorFile",
+      "title": "CodeCritter: Refactor Entire File",
+      "category": "CodeCritter"
+    }
     ],
     "menus": {
       "editor/context": [
@@ -78,7 +83,11 @@
           "when": "editorHasSelection",
           "command": "codecritter.generateTests",
           "group": "navigation"
-        }
+        },
+             {
+        "command": "codecritter.refactorFile",
+        "group": "navigation@3" 
+      }
       ]
     },
     "configuration": {

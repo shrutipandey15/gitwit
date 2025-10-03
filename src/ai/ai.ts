@@ -11,8 +11,10 @@ import {
   getDocstringPrompt,
   getPrompt,
   getExplanationPrompt,
-  getTestGenerationPrompt
+  getTestGenerationPrompt,
+  getIntelligentRefactorPrompt
 } from "./prompts";
+import { IntelligentRefactorResponse } from "../types";
 
 export function parseAndValidateJsonResponse(rawText: string): any {
   const jsonRegex = /\{[\s\S]*\}/;
@@ -240,6 +242,35 @@ export async function generateTests(
     return result;
   } catch (error) {
     recordFailure();
+    throw error;
+  }
+}
+
+export async function generateIntelligentRefactoring(
+  code: string,
+  apiKey: string
+): Promise<IntelligentRefactorResponse> {
+  console.log("CodeCritter: [AI] Starting intelligent file refactoring.");
+  // ... (circuit breaker logic is the same)
+
+  try {
+    const prompt = getIntelligentRefactorPrompt(code);
+    const result = await retryWithBackoff(async () => {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+      
+      // The parse function will need to be updated to handle this new shape
+      return JSON.parse(text.match(/\{[\s\S]*\}/)![0]);
+    });
+
+    recordSuccess();
+    return result;
+  } catch (error) {
+    recordFailure();
+    console.error("CodeCritter: [AI] Failed to get intelligent refactoring.", error);
     throw error;
   }
 }

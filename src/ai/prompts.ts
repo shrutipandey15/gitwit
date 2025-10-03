@@ -124,3 +124,27 @@ export function getTestGenerationPrompt(code: string, framework: string = 'Jest'
     \`\`\`
   `;
 }
+
+export function getIntelligentRefactorPrompt(code: string): string {
+  return `
+    You are an expert software architect. Your task is to analyze and refactor the entire file provided below.
+
+    **Primary Goal:**
+    Refactor the code to align with modern best practices for clean architecture, readability, and efficiency, while respecting the existing logic and style.
+
+    **Output Format:**
+    You MUST respond in a pure JSON format with the following structure:
+    {
+      "refactoredCode": "...", // The complete, refactored code for the entire file.
+      "explanation": "...",     // A clear, step-by-step explanation of the changes you made and why.
+      "alternativeSuggestion": "..." // Optional: If you see a more optimal architectural pattern that deviates from the current style, describe it here. For example, 'While I've refactored the existing code, a more optimal solution might be to use a state management library like Redux for this component...'
+    }
+
+    **IMPORTANT:** The "refactoredCode" value must contain the full code for the file. Do not omit any part of it.
+
+    Original File Content:
+    \`\`\`
+    ${code}
+    \`\`\`
+  `;
+}
