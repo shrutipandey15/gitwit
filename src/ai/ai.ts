@@ -69,7 +69,7 @@ export async function generateReview(
     const prompt = getPrompt(persona, code);
     const result = await retryWithBackoff(async () => {
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       const result = await model.generateContent(prompt);
       const response = await result.response;
       const text = response.text();
@@ -106,7 +106,7 @@ export async function generateAutomatedReview(
 
     const result = await retryWithBackoff(async () => {
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       const result = await model.generateContent(prompt);
       const response = await result.response;
       const text = response.text();
@@ -144,7 +144,7 @@ export async function generateDocstring(
     const prompt = getDocstringPrompt(code);
     const result = await retryWithBackoff(async () => {
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       const result = await model.generateContent(prompt);
       const response = await result.response;
       return response.text();
@@ -172,7 +172,7 @@ export async function analyzeAndSuggestCommit(
     const prompt = getCommitMessagePrompt(diff);
     const result = await retryWithBackoff(async () => {
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       const result = await model.generateContent(prompt);
       const response = await result.response;
       const text = response.text();
@@ -201,7 +201,7 @@ export async function generateExplanation(
     const prompt = getExplanationPrompt(code);
     const result = await retryWithBackoff(async () => {
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       const result = await model.generateContent(prompt);
       const response = await result.response;
       return response.text();

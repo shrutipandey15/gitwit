@@ -2,7 +2,7 @@
   "name": "codecritter",
   "displayName": "CodeCritter - AI Code Review",
   "description": "An AI-powered code reviewer with multiple personalities to help you improve your code quality, style, and security.",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "publisher": "shruti-pandey",
   "icon": "icon.png",
   "repository": {
@@ -137,10 +137,10 @@
     "@vscode/test-cli": "^0.0.4",
     "@vscode/test-electron": "^2.3.9",
     "eslint": "^8.56.0",
+    "ts-loader": "^9.4.2",
     "typescript": "^5.3.3",
     "webpack": "^5.76.0",
-    "webpack-cli": "^5.0.1",
-    "ts-loader": "^9.4.2"
+    "webpack-cli": "^5.0.1"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1"
