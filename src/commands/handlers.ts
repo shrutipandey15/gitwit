@@ -173,6 +173,7 @@ export async function toggleAutoReviewHandler() {
     `CodeCritter Auto Review ${!currentSetting ? "Enabled" : "Disabled"}`
   );
 }
+
 export async function onDidSaveTextDocumentHandler(document: vscode.TextDocument, context: vscode.ExtensionContext) {
     console.log(`CodeCritter: File saved: ${document.fileName}.`);
     
@@ -183,7 +184,6 @@ export async function onDidSaveTextDocumentHandler(document: vscode.TextDocument
         return;
     }
 
-    // --- 1. AUTOMATED REVIEW LOGIC ---
     const autoReviewEnabled = config.get('autoReviewEnabled', true);
     if (autoReviewEnabled && !isReviewInProgress && !shouldSkipFile(document)) {
         isReviewInProgress = true;
@@ -199,7 +199,6 @@ export async function onDidSaveTextDocumentHandler(document: vscode.TextDocument
         }
     }
 
-    // --- 2. COMMIT ASSISTANT QUALITY GATE ---
     const diagnostics = diagnosticCollection.get(document.uri);
     const hasErrors = diagnostics?.some(d => d.severity === vscode.DiagnosticSeverity.Error);
 
@@ -208,7 +207,6 @@ export async function onDidSaveTextDocumentHandler(document: vscode.TextDocument
         return;
     }
 
-    // --- 3. COMMIT ASSISTANT LOGIC ---
     const commitAssistEnabled = config.get('commitAssistEnabled', true);
     if (commitAssistEnabled) {
         console.log(`CodeCritter: Kicking off commit assistant (no errors found).`);
@@ -229,7 +227,7 @@ export async function onDidSaveTextDocumentHandler(document: vscode.TextDocument
 
                     if (userChoice === "Commit") {
                         const terminal = vscode.window.createTerminal("CodeCritter Commit");
-                        terminal.sendText(`git add . && git commit -m "${commitMessage}"`);
+                        terminal.sendText(`git add "${document.fileName}" && git commit -m "${commitMessage}"`);
                         terminal.show();
                     }
                 }
