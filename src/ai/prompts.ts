@@ -110,3 +110,17 @@ export function getExplanationPrompt(code: string): string {
     \`\`\`
   `;
 }
+
+export function getTestGenerationPrompt(code: string, framework: string = 'Jest'): string {
+  return `
+    You are an expert software engineer specializing in testing.
+    Analyze the following code snippet and generate a complete test file for it using the ${framework} testing framework.
+    The response should be the full code for the test file, including necessary imports and mocks.
+    Format the response as a single block of code, ready to be pasted into a file. Do not include any other text or explanation.
+
+    Code to test:
+    \`\`\`
+    ${code}
+    \`\`\`
+  `;
+}

@@ -11,6 +11,7 @@ import {
   getDocstringPrompt,
   getPrompt,
   getExplanationPrompt,
+  getTestGenerationPrompt
 } from "./prompts";
 
 export function parseAndValidateJsonResponse(rawText: string): any {
@@ -205,6 +206,34 @@ export async function generateExplanation(
       const result = await model.generateContent(prompt);
       const response = await result.response;
       return response.text();
+    });
+
+    recordSuccess();
+    return result;
+  } catch (error) {
+    recordFailure();
+    throw error;
+  }
+}
+
+export async function generateTests(
+  code: string,
+  apiKey: string
+): Promise<string> {
+  if (isCircuitBreakerOpen()) {
+    throw new Error("Service is currently unavailable.");
+  }
+
+  try {
+    const prompt = getTestGenerationPrompt(code);
+    const result = await retryWithBackoff(async () => {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" }); // Or your preferred model
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      // Clean up the response to ensure it's just code
+      const text = response.text().replace(/```(javascript|typescript)?/g, '').trim();
+      return text;
     });
 
     recordSuccess();

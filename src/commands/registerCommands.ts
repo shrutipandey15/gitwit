@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { startReviewHandler, toggleAutoReviewHandler, selectPersonaHandler, explainCodeHandler, showStatsHandler } from './handlers';
+import { startReviewHandler, toggleAutoReviewHandler, selectPersonaHandler, explainCodeHandler, showStatsHandler, generateTestsHandler } from './handlers';
 
 export function registerCommands(context: vscode.ExtensionContext) {
   const personaStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
@@ -46,6 +46,11 @@ export function registerCommands(context: vscode.ExtensionContext) {
   () => showStatsHandler(context)
   );
 
+  const generateTestsDisposable = vscode.commands.registerCommand(
+    'codecritter.generateTests',
+    generateTestsHandler
+  );
+
 
   context.subscriptions.push(
     startReviewDisposable,
@@ -53,6 +58,7 @@ export function registerCommands(context: vscode.ExtensionContext) {
     selectPersonaDisposable,
     personaStatusBarItem,
     explainCodeDisposable,
-    showStatsDisposable
+    showStatsDisposable,
+    generateTestsDisposable
   );
 }

@@ -60,6 +60,11 @@
         "command": "codecritter.showStats",
         "title": "Show My Stats",
         "category": "CodeCritter"
+      },
+      {
+        "command": "codecritter.generateTests",
+        "title": "CodeCritter: Generate Tests",
+        "category": "CodeCritter"
       }
     ],
     "menus": {
@@ -67,6 +72,11 @@
         {
           "when": "editorHasSelection",
           "command": "codecritter.explainCode",
+          "group": "navigation"
+        },
+        {
+          "when": "editorHasSelection",
+          "command": "codecritter.generateTests",
           "group": "navigation"
         }
       ]

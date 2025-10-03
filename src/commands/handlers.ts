@@ -5,11 +5,14 @@ import {
   generateReview,
   generateExplanation,
   analyzeAndSuggestCommit,
-  generateAutomatedReview
+  generateAutomatedReview,
+  generateTests
 } from "../ai/ai";
 import { executeCommand } from "../utils/command";
 import { ReviewData } from "../types";
 import { diagnosticCollection } from "../extension";
+import * as path from "path";
+import { Buffer } from 'buffer';
 
 let isReviewInProgress = false;
 let lastReviewedContent = new Map<string, string>();
@@ -421,4 +424,46 @@ async function performAutomatedReview(
     console.error('CodeCritter: [Auto-Review] An error occurred.', error);
     vscode.window.setStatusBarMessage('CodeCritter: Error performing review.', 5000);
   }
+}
+
+export async function generateTestsHandler() {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    vscode.window.showInformationMessage("Open a file to generate tests.");
+    return;
+  }
+
+  const config = vscode.workspace.getConfiguration("codecritter");
+  const apiKey = config.get<string>("apiKey");
+
+  if (!apiKey) {
+    vscode.window.showWarningMessage("Please set your Gemini API key first.");
+    return;
+  }
+  
+  const selectedCode = editor.document.getText(editor.selection);
+  const codeToTest = selectedCode || editor.document.getText();
+
+  await vscode.window.withProgress({
+    location: vscode.ProgressLocation.Notification,
+    title: "CodeCritter is generating tests...",
+    cancellable: false,
+  }, async (progress) => {
+    try {
+      const testFileContent = await generateTests(codeToTest, apiKey);      
+      const currentFilePath = editor.document.uri.fsPath;
+      const fileExtension = path.extname(currentFilePath);
+      const baseName = path.basename(currentFilePath, fileExtension);
+      const testFilePathUri = vscode.Uri.file(`${path.dirname(currentFilePath)}/${baseName}.test${fileExtension}`);
+      const contentAsUint8Array = Buffer.from(testFileContent, 'utf8');
+
+      await vscode.workspace.fs.writeFile(testFilePathUri, contentAsUint8Array);
+
+      await vscode.window.showTextDocument(testFilePathUri);
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      vscode.window.showErrorMessage(`Failed to generate tests: ${errorMessage}`);
+    }
+  });
 }
