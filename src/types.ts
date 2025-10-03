@@ -31,5 +31,8 @@ export interface ReviewData {
 export interface IntelligentRefactorResponse {
   refactoredCode: string;
   explanation: string;
-  alternativeSuggestion?: string;
+  alternativeSuggestion?: {
+    explanation: string;
+    code: string;
+  };
 }

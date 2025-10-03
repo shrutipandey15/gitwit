@@ -73,7 +73,7 @@ export function getDocstringPrompt(code: string): string {
     \`\`\`
     ${code}
     \`\`\`
-  `;
+    `;
 }
 
 export function getCommitMessagePrompt(diff: string): string {
@@ -130,17 +130,23 @@ export function getIntelligentRefactorPrompt(code: string): string {
     You are an expert software architect. Your task is to analyze and refactor the entire file provided below.
 
     **Primary Goal:**
-    Refactor the code to align with modern best practices for clean architecture, readability, and efficiency, while respecting the existing logic and style.
+    Refactor the code to align with modern best practices. It is crucial that you **preserve existing docstrings and important comments**. Do not strip them out.
 
     **Output Format:**
     You MUST respond in a pure JSON format with the following structure:
     {
-      "refactoredCode": "...", // The complete, refactored code for the entire file.
-      "explanation": "...",     // A clear, step-by-step explanation of the changes you made and why.
-      "alternativeSuggestion": "..." // Optional: If you see a more optimal architectural pattern that deviates from the current style, describe it here. For example, 'While I've refactored the existing code, a more optimal solution might be to use a state management library like Redux for this component...'
+      "refactoredCode": "...",
+      "explanation": "...",
+      "alternativeSuggestion": {
+        "explanation": "...",
+        "code": "..."
+      }
     }
 
-    **IMPORTANT:** The "refactoredCode" value must contain the full code for the file. Do not omit any part of it.
+    **Instructions:**
+    1.  **refactoredCode**: The full refactored code. PRESERVE existing documentation (docstrings) and meaningful comments. Do not add any new, temporary comments.
+    2.  **explanation**: A brief, one-sentence summary of the main improvement.
+    3.  **alternativeSuggestion**: If you have a more optimal architectural pattern, provide a brief "explanation" and a complete "code" example demonstrating how to implement it. If you have no suggestion, this field can be null.
 
     Original File Content:
     \`\`\`

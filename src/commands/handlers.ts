@@ -469,6 +469,8 @@ export async function generateTestsHandler() {
   });
 }
 
+// In src/commands/handlers.ts - This is the complete and final function
+
 export async function intelligentRefactorHandler() {
   console.log('CodeCritter: "Intelligently Refactor File" command triggered.');
   
@@ -481,7 +483,7 @@ export async function intelligentRefactorHandler() {
   const config = vscode.workspace.getConfiguration("codecritter");
   const apiKey = config.get<string>("apiKey");
   if (!apiKey) {
-    vscode.window.showWarningMessage("Please set your Gemini API key.");
+    vscode.window.showInformationMessage("Please set your Gemini API key.");
     return;
   }
 
@@ -489,13 +491,12 @@ export async function intelligentRefactorHandler() {
 
   await vscode.window.withProgress({
     location: vscode.ProgressLocation.Notification,
-    title: "CodeCritter is analyzing the file architecture...",
+    title: "CodeCritter is analyzing and refactoring the file...",
     cancellable: false,
   }, async () => {
     try {
       const result = await generateIntelligentRefactoring(entireFileContent, apiKey);
       
-      // Apply the refactored code to the editor
       await editor.edit(editBuilder => {
         const fullRange = new vscode.Range(
           editor.document.positionAt(0),
@@ -504,25 +505,28 @@ export async function intelligentRefactorHandler() {
         editBuilder.replace(fullRange, result.refactoredCode);
       });
 
-      // Show the explanation in an information message
-      vscode.window.showInformationMessage(
-        "Refactoring complete: " + result.explanation, 
-        { modal: true }
-      );
-
-      // If there's an alternative suggestion, show that too
-      if (result.alternativeSuggestion) {
-        vscode.window.showInformationMessage(
-          "Alternative Suggestion: " + result.alternativeSuggestion,
-          { modal: true }
-        );
-      }
+      let reportContent = `# CodeCritter Refactoring Report\n\n`;
+      reportContent += `## Explanation of Changes\n`;
+      reportContent += `${result.explanation}\n\n`;
       
-      console.log('CodeCritter: Successfully applied intelligent refactoring.');
+      if (result.alternativeSuggestion && result.alternativeSuggestion.code) {
+        reportContent += `## Alternative Architectural Suggestion\n`;
+        reportContent += `${result.alternativeSuggestion.explanation}\n\n`;
+        reportContent += `\`\`\`javascript\n${result.alternativeSuggestion.code}\n\`\`\`\n`;
+      }
+
+      const reportDocument = await vscode.workspace.openTextDocument({
+        content: reportContent,
+        language: 'markdown'
+      });
+      
+      await vscode.window.showTextDocument(reportDocument, vscode.ViewColumn.Beside);
+
+      console.log('CodeCritter: Successfully applied refactoring and opened detailed report.');
       
     } catch (error) {
       console.error('CodeCritter: Error during intelligent refactoring.', error);
-      const errorMessage = error instanceof Error ? error.message : "Unknown error.";
+      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
       vscode.window.showErrorMessage(`Refactoring failed: ${errorMessage}`);
     }
   });
