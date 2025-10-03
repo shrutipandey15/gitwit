@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [2.2.0] - 2025-10-03
+
+### Added
+- **AI-Powered Test Generation**: Added a context menu command ("CodeCritter: Generate Tests") to automatically generate a complete test file for a selected code block or an entire file.
+- **Unified Intelligent Refactoring**: Implemented a single, powerful command ("CodeCritter: Intelligently Refactor") that refactors either a selection or an entire file, providing a detailed report on the changes and suggesting alternative architectural patterns.
+- **Full-File Documentation Generation**: Added a "CodeCritter: Generate File Documentation" command to create comprehensive Markdown documentation for the active file.
+- **Project-Aware README Generation**: Added a "CodeCritter: Generate Project README" command to the Command Palette, which analyzes the project's `package.json`, file structure, and entry point to generate a complete `README.md`.
+
+### Changed
+- **Smarter Commit Assistant**: The commit assistant is now more precise, staging only the specific changed file (`git add <file>`) instead of all files (`git add .`).
+- **Improved Commit Quality Gate**: The commit assistant now includes a quality gate and will not trigger if the saved file contains any diagnostics with an "Error" severity, preventing suggestions for broken code.
+
 ## [1.2.0] - 2025-09-17
 
 ### Added

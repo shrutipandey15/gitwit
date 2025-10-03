@@ -16,31 +16,13 @@ CodeCritter isn't just a linter; it's a full suite of tools designed to automate
 
 **The Persona Selector** 🎭 Tired of dry, robotic feedback? Click the persona name in the status bar and choose who reviews your code. Get roasted by the Sarcastic Reviewer, get a lesson from the Strict Tech Lead, or get some encouragement from the Supportive Mentor.
 
-**The Docstring Drone** 📝 Stop writing boilerplate docs. Paste a function into the CodeCritter panel and get a professional docstring generated for you instantly.
+**The Intelligent Refactor-Bot** 🪄 Highlight a function or right-click anywhere in a file to run the smart refactoring. The AI will rewrite your code to be cleaner and more efficient, providing a detailed report on the changes and suggesting even better architectural patterns.
 
-**The Code Explainer** 🤔 Highlight a confusing block of legacy code, right-click, and select CodeCritter: Explain This Code. Get a simple, plain-English explanation in seconds.
+**The Test Generator** 🧪 Right-click on a function or file and let the AI generate a complete test file for you using modern testing frameworks like Jest.
 
-**The Commit Assistant** ✅ When you've made some changes, CodeCritter will analyze your work and suggest a commit message. If you like it, one click stages and commits your work.
+**The Documentation Drone** 📝 Generate documentation at any level. Create professional docstrings for a single function, generate comprehensive Markdown docs for an entire file, or even generate a complete `README.md` for your project from the command palette.
 
-## 🚀 A Developer's Guide to Using CodeCritter
-
-Meet Alex. Alex is a developer who loves to code but gets bogged down by repetitive tasks and the dread of upcoming code reviews. This is the story of how CodeCritter became her AI sidekick.
-
-### ☕ Morning Coffee & Setup (5 minutes)
-
-**Install the Tool** Alex opens the Extensions view in VS Code (Ctrl+Shift+X), searches for CodeCritter, and hits Install. Easy.
-
-**Grab the API Key** She heads over to [Google AI Studio](https://makersuite.google.com/app/apikey) and grabs her free Gemini API key.
-
-**Plug it In** In VS Code, she opens the Command Palette (Ctrl+Shift+P) and runs CodeCritter: Start Review. In the panel that opens, she pastes her key into the API Settings section and clicks Save. Setup is done before her coffee cools.
-
-### 💻 Mid-day: The Coding Session
-
-**The Magic Happens on Save** As Alex works on a file and saves it, ESLint instantly flags an unused variable, which she fixes. A moment later, the AI Reviewer suggests a small logical improvement right in her editor. It feels like a mini code review happening in real-time.
-
-### 🔍 Afternoon: Tackling a Tricky Function
-
-**"What Does This Even Do?"** Alex finds a confusing block of legacy code, highlights it, and right-clicks to use CodeCritter: Explain This Code. A simple explanation appears, and she's back on track in seconds.
+**The Code Explainer** 🤔 Highlight a confusing block of legacy code, right-click, and select "Explain This Code" to get a simple, plain-English explanation in seconds.
 
 **Time to Document** She pastes the function into the CodeCritter panel and clicks Generate Docstring. A perfect, professional docstring appears.
 
@@ -56,9 +38,10 @@ Meet Alex. Alex is a developer who loves to code but gets bogged down by repetit
 
 CodeCritter is just getting started. The goal is to evolve it into a full "Code-Forge" that actively helps you write and refactor code, not just review it.
 
-- [ ] **The Refactor-Bot 9000**: Programmatically refactor code to modernize JavaScript and extract clean functions.
-- [ ] **The Boilerplate Obliterator**: Generate unit tests, create TypeScript types from JSON, and kill repetitive setup.
-- [ ] **The Documentation Drone**: Generate full-file documentation, not just snippets.
+- [x] **The Refactor-Bot 9000**: Programmatically refactor code to modernize JavaScript and extract clean functions.
+- [x] **The Boilerplate Obliterator**: Generate unit tests.
+- [x] **The Documentation Drone**: Generate full-file documentation, not just snippets.
+- [ ] **Create TypeScript types from JSON**.
 - [ ] **Support for More AIs**: Add OpenAI's GPT, Anthropic's Claude, and others.
 
 ## 🤝 Want to Help Build It?
