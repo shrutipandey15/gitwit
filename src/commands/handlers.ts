@@ -9,7 +9,8 @@ import {
   generateTests,
   generateIntelligentRefactoring,
   generateIntelligentSelectionRefactoring,
-  generateReadme
+  generateReadme,
+  summarizeFileContent
 } from "../ai/ai";
 import { executeCommand } from "../utils/command";
 import { ReviewData } from "../types";
@@ -581,81 +582,152 @@ async function astRefactor(
 }
 
 async function buildFileTree(dir: vscode.Uri, indent: string = ''): Promise<string> {
-    let tree = '';
-    const entries = await vscode.workspace.fs.readDirectory(dir);
-    
-    const ignoredFolders = ['node_modules', '.git', 'out', 'dist', '.vscode'];
-    
-    for (const [name, type] of entries) {
-        if (ignoredFolders.includes(name)) continue;
-
-        if (type === vscode.FileType.Directory) {
-            tree += `${indent}├── ${name}/\n`;
-            tree += await buildFileTree(vscode.Uri.joinPath(dir, name), `${indent}│   `);
-        } else {
-            tree += `${indent}├── ${name}\n`;
-        }
+  let tree = '';
+  const entries = await vscode.workspace.fs.readDirectory(dir);
+  const ignored = ['node_modules', '.git', 'out', 'dist', '.vscode', 'target', 'build', 'bin', 'obj', '.DS_Store'];
+  entries.sort((a, b) => {
+    if (a[1] === vscode.FileType.Directory && b[1] !== vscode.FileType.Directory) {
+      return -1;
     }
-    return tree;
+    if (a[1] !== vscode.FileType.Directory && b[1] === vscode.FileType.Directory) {
+      return 1;
+    }
+    return a[0].localeCompare(b[0]);
+  });
+
+  for (const [name, type] of entries) {
+    if (ignored.includes(name)) continue;
+
+    if (type === vscode.FileType.Directory) {
+      tree += `${indent}├── ${name}/\n`;
+      tree += await buildFileTree(vscode.Uri.joinPath(dir, name), `${indent}│   `);
+    } else {
+      tree += `${indent}├── ${name}\n`;
+    }
+  }
+  return tree;
+}
+
+async function getFileSummaries(
+  files: vscode.Uri[],
+  apiKey: string,
+  progress: vscode.Progress<{ message?: string; increment?: number }>
+): Promise<string[]> {
+  const summaries: string[] = [];
+  const totalFiles = files.length;
+  const availableLanguages = await vscode.languages.getLanguages();
+
+  for (let i = 0; i < totalFiles; i++) {
+    const file = files[i];
+    const increment = (1 / totalFiles) * 50;
+    progress.report({
+      message: `Analyzing ${path.basename(file.fsPath)}...`,
+      increment,
+    });
+    try {
+      const content = Buffer.from(
+        await vscode.workspace.fs.readFile(file)
+      ).toString('utf-8');
+
+      const ext = path.extname(file.fsPath).substring(1);
+      const languageId = availableLanguages.find(lang => lang === ext) || 'plaintext';
+
+      if (content.trim().length > 50 && languageId !== 'plaintext') {
+        const summary = await summarizeFileContent(content, apiKey, languageId);
+        const relativePath = vscode.workspace.asRelativePath(file);
+        summaries.push(`- \`${relativePath}\`: ${summary}`);
+      }
+    } catch (e) {
+      console.warn(`Could not read or summarize file: ${file.fsPath}`, e);
+    }
+  }
+  return summaries;
 }
 
 export async function generateReadmeHandler() {
   console.log('CodeCritter: "Generate README" command triggered.');
-  
+
   const workspaceFolders = vscode.workspace.workspaceFolders;
   if (!workspaceFolders || workspaceFolders.length === 0) {
-    vscode.window.showErrorMessage("Please open a project folder first.");
+    vscode.window.showErrorMessage('Please open a project folder first.');
     return;
   }
   const rootUri = workspaceFolders[0].uri;
 
-  const config = vscode.workspace.getConfiguration("codecritter");
-  const apiKey = config.get<string>("apiKey");
+  const config = vscode.workspace.getConfiguration('codecritter');
+  const apiKey = config.get<string>('apiKey');
   if (!apiKey) {
-    vscode.window.showInformationMessage("Please set your Gemini API key.");
+    vscode.window.showInformationMessage('Please set your Gemini API key.');
     return;
   }
 
-  await vscode.window.withProgress({
-    location: vscode.ProgressLocation.Notification,
-    title: "CodeCritter is analyzing your project...",
-    cancellable: false,
-  }, async () => {
-    try {
-      let packageJsonContent: string | null = null;
-      let entryPointContent: string | null = null;
-
+  await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: 'CodeCritter is analyzing your project...',
+      cancellable: false,
+    },
+    async (progress) => {
       try {
-        const packageJsonUri = vscode.Uri.joinPath(rootUri, 'package.json');
-        packageJsonContent = Buffer.from(await vscode.workspace.fs.readFile(packageJsonUri)).toString('utf-8');
-        console.log('CodeCritter: Found and read package.json.');
-      } catch (error) {
-        console.log('CodeCritter: package.json not found, proceeding without it.');
-      }
-      
-      try {
-        const entryPointUri = vscode.Uri.joinPath(rootUri, 'src/extension.ts'); 
-        entryPointContent = Buffer.from(await vscode.workspace.fs.readFile(entryPointUri)).toString('utf-8');
-        console.log('CodeCritter: Found and read src/extension.ts.');
-      } catch (error) {
-        console.log('CodeCritter: src/extension.ts not found, proceeding without it.');
-      }
-      
-      const fileTree = await buildFileTree(rootUri);
+        progress.report({ increment: 10, message: 'Reading package.json...' });
+        let packageJsonContent: string | null = null;
+        try {
+          const packageJsonUri = vscode.Uri.joinPath(rootUri, 'package.json');
+          packageJsonContent = Buffer.from(
+            await vscode.workspace.fs.readFile(packageJsonUri)
+          ).toString('utf-8');
+        } catch (error) {
+          console.log('CodeCritter: package.json not found, proceeding without it.');
+        }
 
-      const readmeContent = await generateReadme(packageJsonContent, entryPointContent, fileTree, apiKey);
+        progress.report({ increment: 15, message: 'Building file tree...' });
+        const fileTree = await buildFileTree(rootUri);
 
-      const readmeUri = vscode.Uri.joinPath(rootUri, 'README.md');
-      await vscode.workspace.fs.writeFile(readmeUri, Buffer.from(readmeContent, 'utf-8'));
-      
-      await vscode.window.showTextDocument(readmeUri);
-      
-      console.log('CodeCritter: Successfully generated and opened README.md.');
-      
-    } catch (error) {
-      console.error('CodeCritter: Error during README generation.', error);
-      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
-      vscode.window.showErrorMessage(`README generation failed: ${errorMessage}`);
+        progress.report({ increment: 15, message: 'Finding source files...' });
+        const sourceFilePattern = '**/*.{js,ts,py,go,java,rs,cs,rb,php,swift,kt,dart,c,cpp,h,hpp}';
+        const excludePattern = '**/{node_modules,dist,out,build,vendor,.*,target,bin,obj,venv}/**';
+        const allFiles = await vscode.workspace.findFiles(sourceFilePattern, excludePattern);
+
+        const fileSummaries = await getFileSummaries(allFiles, apiKey, progress); // Progress is now 50%
+
+        progress.report({
+          increment: 10,
+          message: 'Synthesizing project documentation...',
+        });
+
+        const readmeUri = vscode.Uri.joinPath(rootUri, 'README.md');
+        let existingReadmeContent: string | null = null;
+        try {
+          const content = await vscode.workspace.fs.readFile(readmeUri);
+          existingReadmeContent = Buffer.from(content).toString('utf-8');
+          progress.report({ message: 'Updating existing README.md...' });
+        } catch (error) {
+          progress.report({ message: 'Creating new README.md...' });
+        }
+
+        const readmeContent = await generateReadme(
+          packageJsonContent,
+          fileTree,
+          fileSummaries,
+          existingReadmeContent,
+          apiKey
+        );
+
+        progress.report({ increment: 40, message: 'Writing README.md...' });
+        await vscode.workspace.fs.writeFile(
+          readmeUri,
+          Buffer.from(readmeContent, 'utf-8')
+        );
+
+        await vscode.window.showTextDocument(readmeUri);
+      } catch (error) {
+        console.error('CodeCritter: Error during README generation.', error);
+        const errorMessage =
+          error instanceof Error ? error.message : 'An unknown error occurred.';
+        vscode.window.showErrorMessage(
+          `README generation failed: ${errorMessage}`
+        );
+      }
     }
-  });
+  );
 }
