@@ -16,6 +16,7 @@ import { ReviewData } from "../types";
 import { diagnosticCollection } from "../extension";
 import * as path from "path";
 import { Buffer } from 'buffer';
+import * as ts from "typescript";
 
 let isReviewInProgress = false;
 let lastReviewedContent = new Map<string, string>();
@@ -485,7 +486,7 @@ export async function generateTestsHandler() {
 
 export async function intelligentRefactorHandler() {
   console.log('CodeCritter: "Intelligently Refactor" command triggered.');
-  
+
   const editor = vscode.window.activeTextEditor;
   if (!editor) { return; }
 
@@ -496,43 +497,87 @@ export async function intelligentRefactorHandler() {
     return;
   }
 
+  const document = editor.document;
+  const languageId = document.languageId;
   const selection = editor.selection;
   const isSelection = !selection.isEmpty;
-  const codeToRefactor = isSelection ? editor.document.getText(selection) : editor.document.getText();
-  const fullFileText = editor.document.getText();
+  const codeToRefactor = isSelection ? document.getText(selection) : document.getText();
+  const fullFileText = document.getText();
 
   await vscode.window.withProgress({
     location: vscode.ProgressLocation.Notification,
-    title: `CodeCritter is refactoring ${isSelection ? 'selection' : 'file'}...`,
+    title: `CodeCritter is refactoring your ${languageId} code...`,
     cancellable: false,
   }, async () => {
     try {
-      const result = isSelection 
-        ? await generateIntelligentSelectionRefactoring(codeToRefactor, fullFileText, apiKey)
-        : await generateIntelligentRefactoring(codeToRefactor, apiKey);
-      
-      const rangeToReplace = isSelection ? selection : new vscode.Range(
-        editor.document.positionAt(0),
-        editor.document.positionAt(fullFileText.length)
-      );
+      const result = isSelection
+        ? await generateIntelligentSelectionRefactoring(codeToRefactor, fullFileText, apiKey, languageId)
+        : await generateIntelligentRefactoring(codeToRefactor, apiKey, languageId);
 
       await editor.edit(editBuilder => {
+        const rangeToReplace = isSelection ? selection : new vscode.Range(
+          document.positionAt(0),
+          document.positionAt(fullFileText.length)
+        );
         editBuilder.replace(rangeToReplace, result.refactoredCode);
       });
 
       let reportContent = `# CodeCritter Refactoring Report\n\n## Explanation\n${result.explanation}\n\n`;
-      if (result.alternativeSuggestion && result.alternativeSuggestion.code) {
-        reportContent += `## Alternative Suggestion\n${result.alternativeSuggestion.explanation}\n\n\`\`\`javascript\n${result.alternativeSuggestion.code}\n\`\`\`\n`;
+      if (result.alternativeSuggestion?.code) {
+        reportContent += `## Alternative Suggestion\n${result.alternativeSuggestion.explanation}\n\n\`\`\`${languageId}\n${result.alternativeSuggestion.code}\n\`\`\`\n`;
       }
       const reportDocument = await vscode.workspace.openTextDocument({ content: reportContent, language: 'markdown' });
       await vscode.window.showTextDocument(reportDocument, vscode.ViewColumn.Beside);
-      
+
     } catch (error) {
       console.error('CodeCritter: Error during intelligent refactoring.', error);
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
       vscode.window.showErrorMessage(`Refactoring failed: ${errorMessage}`);
     }
   });
+}
+async function astRefactor(
+  originalSource: string,
+  selection: string,
+  refactoredSelection: string
+): Promise<string> {
+  const sourceFile = ts.createSourceFile(
+    'temp.ts',
+    originalSource,
+    ts.ScriptTarget.Latest,
+    true
+  );
+
+  const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
+    return (sf) => {
+      const visitor = (node: ts.Node): ts.Node => {
+        const nodeText = node.getFullText(sf).trim();
+        const selectionTrimmed = selection.trim();
+
+        if (nodeText === selectionTrimmed) {
+          const newSourceFile = ts.createSourceFile(
+            'new.ts',
+            refactoredSelection,
+            ts.ScriptTarget.Latest,
+            true
+          );
+          return newSourceFile.statements[0];
+        }
+        return ts.visitEachChild(node, visitor, context);
+      };
+
+      const newStatements = ts.visitNodes(sf.statements, visitor) as ts.NodeArray<ts.Statement>;
+      return context.factory.updateSourceFile(sf, newStatements);
+    };
+  };
+
+  const result = ts.transform(sourceFile, [transformer]);
+  const printer = ts.createPrinter();
+  const newSource = printer.printFile(result.transformed[0]);
+
+  result.dispose();
+
+  return newSource;
 }
 
 async function buildFileTree(dir: vscode.Uri, indent: string = ''): Promise<string> {
