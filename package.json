@@ -2,7 +2,7 @@
   "name": "codecritter",
   "displayName": "CodeCritter - AI Code Review",
   "description": "An AI-powered code reviewer with multiple personalities to help you improve your code quality, style, and security.",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "publisher": "shruti-pandey",
   "icon": "icon.png",
   "repository": {
