@@ -14,7 +14,8 @@ import {
   getTestGenerationPrompt,
   getIntelligentRefactorPrompt,
   getIntelligentSelectionRefactorPrompt,
-  getReadmeGenerationPrompt
+  getReadmeGenerationPrompt,
+  getFileSummaryPrompt
 } from "./prompts";
 import { IntelligentRefactorResponse } from "../types";
 
@@ -314,19 +315,46 @@ export async function generateIntelligentSelectionRefactoring(
   }
 }
 
+export async function summarizeFileContent(
+  content: string,
+  apiKey: string,
+  languageId: string
+): Promise<string> {
+  try {
+    const prompt = getFileSummaryPrompt(content, languageId);
+    const result = await retryWithBackoff(async () => {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      return response.text().replace(/["']/g, '').trim();
+    });
+    return result;
+  } catch (error) {
+    console.error('CodeCritter: [AI] Failed to summarize file.', error);
+    return 'Could not be summarized due to an API error.';
+  }
+}
+
 export async function generateReadme(
   packageJson: string | null,
-  entryPointCode: string | null,
   fileTree: string,
+  fileSummaries: string[],
+  existingReadme: string | null,
   apiKey: string
 ): Promise<string> {
-  console.log("CodeCritter: [AI] Starting README generation.");
+  console.log("CodeCritter: [AI] Starting README generation/update.");
   if (isCircuitBreakerOpen()) {
     throw new Error("Service is currently unavailable.");
   }
 
   try {
-    const prompt = getReadmeGenerationPrompt(packageJson, entryPointCode, fileTree);
+    const prompt = getReadmeGenerationPrompt(
+      packageJson,
+      fileTree,
+      fileSummaries,
+      existingReadme
+    );
     const result = await retryWithBackoff(async () => {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
