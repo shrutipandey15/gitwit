@@ -134,66 +134,72 @@ export function getTestGenerationPrompt(code: string, framework: string = 'Jest'
   `;
 }
 
-export function getIntelligentRefactorPrompt(code: string): string {
-  return `
-    You are an expert software architect. Your task is to analyze and refactor the entire file provided below.
+export function getIntelligentRefactorPrompt(
+  code: string,
+  languageId: string
+): string {
+  const languageName = languageId.charAt(0).toUpperCase() + languageId.slice(1);
 
-    **Primary Goal:**
-    Refactor the code to align with modern best practices. It is crucial that you **preserve existing docstrings and important comments**. Do not strip them out.
+  return `
+    You are an expert software architect specializing in the ${languageName} programming language.
+    Your task is to analyze and refactor the provided code snippet to align with modern best practices for ${languageName}.
+
+    **CRITICAL RULES:**
+    1.  **LANGUAGE-SPECIFIC:** The output code MUST be 100% valid, runnable ${languageName}. Do NOT use syntax from other languages.
+    2.  **COMPLETE & VALID CODE:** The "refactoredCode" MUST be complete and syntactically correct. It cannot contain placeholders, omissions, or comments like "[...]".
+    3.  **PRESERVE LITERALS:** You MUST preserve complex literals (especially regular expressions, SQL queries, etc.) exactly as they are unless the refactoring is specifically about improving that literal.
 
     **Output Format:**
-    You MUST respond in a pure JSON format with the following structure:
+    Respond in a pure JSON format:
     {
       "refactoredCode": "...",
       "explanation": "...",
-      "alternativeSuggestion": {
-        "explanation": "...",
-        "code": "..."
-      }
+      "alternativeSuggestion": { "explanation": "...", "code": "..." }
     }
 
     **Instructions:**
-    1.  **refactoredCode**: The full refactored code. PRESERVE existing documentation (docstrings) and meaningful comments. Do not add any new, temporary comments.
-    2.  **explanation**: A brief, one-sentence summary of the main improvement.
-    3.  **alternativeSuggestion**: If you have a more optimal architectural pattern, provide a brief "explanation" and a complete "code" example demonstrating how to implement it. If you have no suggestion, this field can be null.
+    1.  **refactoredCode**: The full, complete, and syntactically valid refactored ${languageName} code.
+    2.  **explanation**: A brief summary of the main improvement.
+    3.  **alternativeSuggestion**: An optional, more optimal architectural pattern, also written in valid ${languageName}.
 
-    Original File Content:
-    \`\`\`
+    Original ${languageName} Code:
+    \`\`\`${languageId}
     ${code}
     \`\`\`
   `;
 }
 
-export function getIntelligentSelectionRefactorPrompt(selection: string, fullCode: string): string {
+export function getIntelligentSelectionRefactorPrompt(
+  selection: string,
+  fullCode: string,
+  languageId: string
+): string {
+  const languageName = languageId.charAt(0).toUpperCase() + languageId.slice(1);
   return `
-    You are an expert software architect. Your primary task is to refactor the selected code snippet ('Code to Refactor') to be cleaner, more efficient, and more maintainable.
+    You are an expert software architect specializing in ${languageName}. Your primary task is to refactor the selected code snippet ('Code to Refactor').
+    Use the 'Full File Context' to understand the existing architectural patterns and coding style.
 
-    It is crucial that you use the 'Full File Context' to understand the existing architectural patterns, coding style, and conventions. The refactoring should feel consistent with the rest of the file.
+    **CRITICAL RULES:**
+    1.  **LANGUAGE-SPECIFIC:** The output code MUST be valid, runnable ${languageName}.
+    2.  **COMPLETE & VALID SYNTAX:** The "refactoredCode" must be 100% complete and syntactically correct.
+    3.  **PRESERVE LITERALS:** You MUST preserve complex literals (like regular expressions) exactly as they are.
 
     **Output Format:**
-    You MUST respond in a pure JSON format with the following structure:
+    Respond in a pure JSON format:
     {
       "refactoredCode": "...",
       "explanation": "...",
-      "alternativeSuggestion": {
-        "explanation": "...",
-        "code": "..."
-      }
+      "alternativeSuggestion": { "explanation": "...", "code": "..." }
     }
-
-    **Instructions:**
-    1.  **refactoredCode**: The refactored version of ONLY the 'Code to Refactor'. PRESERVE existing documentation and comments within that selection.
-    2.  **explanation**: A brief summary of the changes made.
-    3.  **alternativeSuggestion**: If a more optimal pattern exists (even if it differs from the file's current style), provide a brief "explanation" and a "code" example. If you have no suggestion, this field can be null.
 
     ---
     **Full File Context:**
-    \`\`\`
+    \`\`\`${languageId}
     ${fullCode}
     \`\`\`
     ---
     **Code to Refactor:**
-    \`\`\`
+    \`\`\`${languageId}
     ${selection}
     \`\`\`
   `;
