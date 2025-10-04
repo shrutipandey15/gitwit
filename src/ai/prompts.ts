@@ -205,47 +205,87 @@ export function getIntelligentSelectionRefactorPrompt(
   `;
 }
 
-export function getReadmeGenerationPrompt(packageJson: string | null, entryPointCode: string | null, fileTree: string): string {
-  // Conditionally build the context string
+export function getReadmeGenerationPrompt(
+  packageJson: string | null,
+  fileTree: string,
+  fileSummaries: string[],
+  existingReadme: string | null
+): string {
   let projectContext = `
-    **Project File Structure:**
-    \`\`\`
-    ${fileTree}
-    \`\`\`
-  `;
+**1. Project File Structure:**
+\`\`\`
+${fileTree}
+\`\`\`
+`;
 
   if (packageJson) {
     projectContext += `
-    **package.json:**
-    \`\`\`json
-    ${packageJson}
-    \`\`\`
-    `;
+**2. package.json Content (if applicable):**
+\`\`\`json
+${packageJson}
+\`\`\`
+`;
   }
 
-  if (entryPointCode) {
+  if (fileSummaries.length > 0) {
     projectContext += `
-    **Main Entry Point Code:**
-    \`\`\`
-    ${entryPointCode}
-    \`\`\`
-    `;
+**3. Architectural Overview (Summaries of Key Files):**
+${fileSummaries.join('\n')}
+`;
   }
 
+  if (existingReadme) {
+    return `
+      You are an expert technical writer updating a project's README.md.
+      Your task is to intelligently merge the fresh 'Project Context' into the 'Existing README'.
+
+      **CRITICAL RULES:**
+      1.  **Preserve User Content:** Retain valuable, user-written sections from the 'Existing README' that cannot be auto-generated (e.g., 'License', 'Contributing Guidelines', 'Acknowledgements').
+      2.  **Update and Enrich:** Your primary goal is to replace or enrich the 'Features' and 'Architecture' sections of the 'Existing README' using the new, detailed information from the 'Project Context'.
+      3.  **Replace if Generic:** If the 'Existing README' is just a generic template (contains placeholders like "Project Title Placeholder"), you should ignore it and generate a completely new, high-quality README from the 'Project Context'.
+      4.  **Full Output:** Your final output MUST be the full, complete markdown for the updated README.md file. Do not output only the changed sections.
+
+      ---
+      **EXISTING README.md CONTENT TO UPDATE:**
+      \`\`\`markdown
+      ${existingReadme}
+      \`\`\`
+      ---
+      **FRESH PROJECT CONTEXT TO INCORPORATE:**
+      ${projectContext}
+    `;
+  } else {
+    return `
+      You are an expert technical writer creating a README.md file from scratch for a software project.
+      Your response MUST be based ONLY on the detailed project context provided below.
+      Do NOT use placeholder text or invent features. Your task is to synthesize the context into a specific and accurate README.
+
+      **README Structure Requirements:**
+      - **Project Title & Description:** Derive from the package.json and architectural overview.
+      - **Features Section:** Derive from the file summaries and package.json.
+      - **Architecture Section:** Use the file summaries to explain the role of each key component.
+      - **Installation & Usage Sections:** Reference scripts from the package.json.
+
+      Begin generating ONLY the raw Markdown content now.
+
+      ---
+      **DETAILED PROJECT CONTEXT:**
+      ${projectContext}
+    `;
+  }
+}
+
+export function getFileSummaryPrompt(content: string, languageId: string): string {
+  const languageName = languageId.charAt(0).toUpperCase() + languageId.slice(1);
   return `
-    You are an expert technical writer creating a README.md file.
-    Use the provided project context to generate a comprehensive and user-friendly README in Markdown format.
+    Analyze the following ${languageName} code.
+    In a single, concise sentence, describe the primary purpose or responsibility of this module.
+    Do not explain the code line-by-line. Focus on the high-level role of the file.
+    Example: "This module handles communication with the Google Generative AI API and includes retry/circuit breaker logic."
 
-    **Project Context:**
-    ${projectContext}
-
-    **README Structure:**
-    - A project title and a short, engaging description.
-    - A "Features" or "Purpose" section based on the code and file structure.
-    - An "Installation" or "Setup" section with general instructions.
-    - A "Usage" section explaining how to run or use the project.
-    - If package.json was provided, mention key scripts or dependencies.
-
-    Your response must be ONLY the raw Markdown content for the README.md file.
+    Code:
+    \`\`\`${languageId}
+    ${content}
+    \`\`\`
   `;
 }
