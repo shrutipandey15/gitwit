@@ -253,19 +253,19 @@ export async function generateTests(
 
 export async function generateIntelligentRefactoring(
   code: string,
-  apiKey: string
+  apiKey: string,
+  languageId: string
 ): Promise<IntelligentRefactorResponse> {
   console.log("CodeCritter: [AI] Starting intelligent file refactoring.");
 
   try {
-    const prompt = getIntelligentRefactorPrompt(code);
+    const prompt = getIntelligentRefactorPrompt(code, languageId);
     const result = await retryWithBackoff(async () => {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       const result = await model.generateContent(prompt);
       const response = await result.response;
       const text = response.text();
-      
       return JSON.parse(text.match(/\{[\s\S]*\}/)![0]);
     });
 
@@ -281,8 +281,9 @@ export async function generateIntelligentRefactoring(
 export async function generateIntelligentSelectionRefactoring(
   selection: string,
   fullCode: string,
-  apiKey: string
-): Promise<IntelligentRefactorResponse> { 
+  apiKey: string,
+  languageId: string
+): Promise<IntelligentRefactorResponse> {
   console.log("CodeCritter: [AI] Starting intelligent selection refactoring.");
 
   if (isCircuitBreakerOpen()) {
@@ -290,8 +291,7 @@ export async function generateIntelligentSelectionRefactoring(
   }
 
   try {
-    const prompt = getIntelligentSelectionRefactorPrompt(selection, fullCode);
-
+    const prompt = getIntelligentSelectionRefactorPrompt(selection, fullCode, languageId);
     const result = await retryWithBackoff(async () => {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
