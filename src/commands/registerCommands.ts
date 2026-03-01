@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { startReviewHandler, toggleAutoReviewHandler, selectPersonaHandler, explainCodeHandler, showStatsHandler, generateTestsHandler, intelligentRefactorHandler, generateReadmeHandler } from './handlers';
+import { startReviewHandler, toggleAutoReviewHandler, selectPersonaHandler, explainCodeHandler, showStatsHandler, generateTestsHandler, intelligentRefactorHandler, generateReadmeHandler, fixIssueHandler } from './handlers';
+import { CodeCritterActionProvider } from './codeActionProvider';
 
 export function registerCommands(context: vscode.ExtensionContext) {
   const personaStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
@@ -60,6 +61,18 @@ export function registerCommands(context: vscode.ExtensionContext) {
     generateReadmeHandler
   );
 
+  const fixIssueDisposable = vscode.commands.registerCommand(
+    'codecritter.fixIssue',
+    (document: vscode.TextDocument, diagnostic: vscode.Diagnostic) =>
+      fixIssueHandler(document, diagnostic, context)
+  );
+
+  const codeActionProviderDisposable = vscode.languages.registerCodeActionsProvider(
+    { scheme: 'file' },
+    new CodeCritterActionProvider(),
+    { providedCodeActionKinds: CodeCritterActionProvider.providedCodeActionKinds }
+  );
+
   context.subscriptions.push(
     startReviewDisposable,
     toggleAutoReviewDisposable,
@@ -69,6 +82,8 @@ export function registerCommands(context: vscode.ExtensionContext) {
     showStatsDisposable,
     generateTestsDisposable,
     intelligentRefactorDisposable,
-    generateReadmeDisposal
+    generateReadmeDisposal,
+    fixIssueDisposable,
+    codeActionProviderDisposable
   );
 }

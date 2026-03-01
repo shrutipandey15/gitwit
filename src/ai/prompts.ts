@@ -33,7 +33,7 @@ export function getPersonaContext(persona: string): string {
     case 'Paranoid Security Engineer':
       return 'You are a security-focused engineer who prioritizes identifying vulnerabilities and security risks above all else.';
     case 'Rubber Duck':
-      return 'You are a Rubber Duck. Do not give answers or suggestions. Instead, ask insightful questions about the code to make the user think through the logic and potential edge cases themselves. Frame your "issues" as questions.';
+      return 'You are a Rubber Duck debugging assistant. You MUST still return valid JSON in the exact format specified. Identify real issues in the code, but phrase each "message" as an insightful question that prompts the developer to think (e.g., "What happens if this value is null?" or "Have you considered what occurs when the list is empty?"). Still assign a proper severity of "high", "medium", or "low" based on the issue\'s actual impact.';
     default:
       return 'You are an experienced code reviewer.';
   }
@@ -273,6 +273,38 @@ ${fileSummaries.join('\n')}
       ${projectContext}
     `;
   }
+}
+
+export function getIssueFixPrompt(
+  contextCode: string,
+  issueMessage: string,
+  issueLineInContext: number,
+  languageId: string
+): string {
+  const languageName = languageId.charAt(0).toUpperCase() + languageId.slice(1);
+  return `You are a precise code repair assistant specializing in ${languageName}.
+
+A code review found this issue:
+"${issueMessage}"
+
+The issue is on line ${issueLineInContext + 1} of the snippet below (1-indexed).
+
+Code snippet (${languageName}):
+\`\`\`${languageId}
+${contextCode}
+\`\`\`
+
+Return ONLY a JSON object:
+{
+  "fixedCode": "the complete corrected snippet with the issue resolved",
+  "explanation": "one concise sentence describing the change"
+}
+
+Rules:
+- Return the COMPLETE snippet (all the same lines) with the fix applied
+- Make ONLY the minimal change needed to address the reported issue
+- Preserve all indentation, style, and surrounding code exactly
+- Do NOT add comments, docstrings, or unrelated improvements`;
 }
 
 export function getFileSummaryPrompt(content: string, languageId: string): string {

@@ -10,17 +10,17 @@ import {
   generateIntelligentRefactoring,
   generateIntelligentSelectionRefactoring,
   generateReadme,
-  summarizeFileContent
+  summarizeFileContent,
+  generateIssueFix
 } from "../ai/ai";
-import { executeCommand } from "../utils/command";
-import { ReviewData } from "../types";
-import { diagnosticCollection } from "../extension";
+import { executeCommand, executeGitCommit } from "../utils/command";
+import { diagnosticCollection, reviewStatusBar } from "../extension";
 import * as path from "path";
 import { Buffer } from 'buffer';
-import * as ts from "typescript";
 
 let isReviewInProgress = false;
-let lastReviewedContent = new Map<string, string>();
+let lastOfferedStagedDiff = '';
+
 
 export async function startReviewHandler(context: vscode.ExtensionContext) {
     const panel = new WebviewManager(context);
@@ -94,8 +94,8 @@ export async function startReviewHandler(context: vscode.ExtensionContext) {
 
             case "review":
               try {
-                const userApiKey = config.get("apiKey") as string;
-                const currentPersona = config.get("persona", "Strict Tech Lead") as string;
+                const userApiKey = config.get<string>("apiKey");
+                const currentPersona = config.get<string>("persona", "Strict Tech Lead");
 
                 if (!userApiKey) {
                   vscode.window.showWarningMessage(
@@ -127,7 +127,7 @@ export async function startReviewHandler(context: vscode.ExtensionContext) {
 
             case "generateDocstring":
               try {
-                const userApiKey = config.get("apiKey") as string;
+                const userApiKey = config.get<string>("apiKey");
                 if (!userApiKey) {
                   vscode.window.showWarningMessage(
                     "Please set your Gemini API key in the CodeCritter settings first."
@@ -178,10 +178,8 @@ export async function toggleAutoReviewHandler() {
 }
 
 export async function onDidSaveTextDocumentHandler(document: vscode.TextDocument, context: vscode.ExtensionContext) {
-    console.log(`CodeCritter: File saved: ${document.fileName}.`);
-    
     const config = vscode.workspace.getConfiguration('codecritter');
-    const userApiKey = config.get('apiKey') as string;
+    const userApiKey = config.get<string>('apiKey');
     if (!userApiKey) {
         console.warn("CodeCritter: Aborting onDidSave handlers because no API key is set.");
         return;
@@ -191,10 +189,8 @@ export async function onDidSaveTextDocumentHandler(document: vscode.TextDocument
     if (autoReviewEnabled && !isReviewInProgress && !shouldSkipFile(document)) {
         isReviewInProgress = true;
         try {
-            console.log(`CodeCritter: Kicking off auto-review...`);
             const currentContent = document.getText();
             await performAutomatedReview(currentContent, document, userApiKey, config, context);
-            lastReviewedContent.set(document.uri.fsPath, currentContent);
         } catch (error) {
             console.error('CodeCritter: Failed to perform automated review:', error);
         } finally {
@@ -206,63 +202,62 @@ export async function onDidSaveTextDocumentHandler(document: vscode.TextDocument
     const hasErrors = diagnostics?.some(d => d.severity === vscode.DiagnosticSeverity.Error);
 
     if (hasErrors) {
-        console.log('CodeCritter: Commit assistant skipped because errors were found in the file.');
         return;
     }
 
     const commitAssistEnabled = config.get('commitAssistEnabled', true);
     if (commitAssistEnabled) {
-        console.log(`CodeCritter: Kicking off commit assistant (no errors found).`);
         const stagedDiff = await executeCommand('git diff --staged');
-        const unstagedDiff = await executeCommand('git diff');
-        const fullDiff = (stagedDiff + '\n' + unstagedDiff).trim();
 
-        if (fullDiff) {
-            console.log('CodeCritter: Diff generated for commit assistant.');
-            try {
-                const analysis = await analyzeAndSuggestCommit(fullDiff, document.fileName, userApiKey);
+        // Only trigger when there are staged changes and we haven't offered for this exact diff yet
+        if (!stagedDiff.trim() || stagedDiff === lastOfferedStagedDiff) {
+            return;
+        }
 
-                if (analysis.ready) {
-                    const persona = config.get('persona', 'Strict Tech Lead') as string;
-                    const commitMessage = analysis.commitMessage;
-                    const message = getPopupMessage(persona, commitMessage);
-                    const userChoice = await vscode.window.showInformationMessage(message, { modal: true }, "Commit", "Cancel");
+        lastOfferedStagedDiff = stagedDiff;
 
-                    if (userChoice === "Commit") {
-                        const terminal = vscode.window.createTerminal("CodeCritter Commit");
-                        terminal.sendText(`git add "${document.fileName}" && git commit -m "${commitMessage}"`);                     
-                        terminal.show();
+        try {
+            const analysis = await analyzeAndSuggestCommit(stagedDiff, document.fileName, userApiKey);
+
+            if (analysis.ready) {
+                const persona = config.get<string>('persona', 'Strict Tech Lead');
+                const personaPrompts: Record<string, string> = {
+                    'Supportive Mentor': "Great work! Edit or accept the commit message:",
+                    'Sarcastic Reviewer': "Fine. Edit it if you must, then commit.",
+                    'Code Poet': "A fine change. Craft your commit message:",
+                    'Paranoid Security Engineer': "Acceptable. Review the message carefully:",
+                    'Rubber Duck': "What does this commit actually do? Edit the message:",
+                    'Strict Tech Lead': "Ready to commit. Edit the message if needed:",
+                };
+                const prompt = personaPrompts[persona] ?? "Edit or accept the commit message:";
+
+                const editedMessage = await vscode.window.showInputBox({
+                    title: 'CodeCritter Commit Assistant',
+                    prompt,
+                    value: analysis.commitMessage,
+                    placeHolder: 'Enter commit message',
+                    validateInput: (val) => val.trim() ? null : 'Commit message cannot be empty',
+                });
+
+                if (editedMessage !== undefined) {
+                    try {
+                        await executeGitCommit(editedMessage.trim());
+                        lastOfferedStagedDiff = ''; // reset so next staged batch can trigger
+                        vscode.window.showInformationMessage(`CodeCritter: Committed — "${editedMessage.trim()}"`);
+                    } catch (commitError) {
+                        const msg = commitError instanceof Error ? commitError.message : 'Unknown error';
+                        vscode.window.showErrorMessage(`CodeCritter: Commit failed — ${msg}`);
                     }
                 }
-            } catch (error) {
-                console.error('CodeCritter: Failed to analyze for commit:', error);
             }
-        } else {
-            console.log('CodeCritter: No diff found, commit assistant finished.');
+        } catch (error) {
+            console.error('CodeCritter: Failed to analyze for commit:', error);
         }
     }
 }
 
-function getPopupMessage(persona: string, commitMessage: string): string {
-  const formattedCommit = `\n\n"${commitMessage}"`;
-  switch (persona) {
-    case 'Supportive Mentor':
-      return `Looks like you've done some great work! I think it's ready to go. How about this commit message?${formattedCommit}`;
-    case 'Sarcastic Reviewer':
-      return `Oh, look, you actually finished something. I guess you can commit it. If you have to.${formattedCommit}`;
-    case 'Code Poet':
-      return `A beautiful composition of logic and form. This change is ready for the ages. Shall we use this message?${formattedCommit}`;
-    case 'Paranoid Security Engineer':
-      return `I've scanned for vulnerabilities and it seems... acceptable. For now. Commit with this message, and stay alert.${formattedCommit}`;
-    case 'Strict Tech Lead':
-    default:
-      return `This change meets our standards. It's ready for commit. Use the following message.${formattedCommit}`;
-  }
-}
 
 export async function selectPersonaHandler() {
-  console.log('CodeCritter: User initiated persona selection.');
-
   const config = vscode.workspace.getConfiguration("codecritter");
 
   const personas = [
@@ -288,8 +283,6 @@ export async function selectPersonaHandler() {
       `CodeCritter persona set to: ${selectedPersona}`
     );
   }
-      console.log(`CodeCritter: Persona saved to settings -> ${selectedPersona}`);
-
 }
 
 export async function explainCodeHandler() {
@@ -334,10 +327,12 @@ export async function explainCodeHandler() {
 export function showStatsHandler(context: vscode.ExtensionContext) {
   const stats = context.globalState.get('codeCritterStats', { kudos: 0, issuesFixed: 0 });
   vscode.window.showInformationMessage(
-    `CodeCritter Stats | Kudos Received: ${stats.kudos}`,
+    `CodeCritter Stats | Kudos Received: ${stats.kudos} | Issues Fixed: ${stats.issuesFixed}`,
     { modal: true }
   );
 }
+
+const MAX_AUTO_REVIEW_FILE_LENGTH = 10000;
 
 function shouldSkipFile(document: vscode.TextDocument): boolean {
   const fileName = document.fileName.toLowerCase();
@@ -366,7 +361,7 @@ function shouldSkipFile(document: vscode.TextDocument): boolean {
     return true;
   }
 
-  if (document.getText().length > 10000) {
+  if (document.getText().length > MAX_AUTO_REVIEW_FILE_LENGTH) {
     return true;
   }
 
@@ -381,10 +376,8 @@ async function performAutomatedReview(
   context: vscode.ExtensionContext,
   isDiff: boolean = false
 ) {
-  console.log(`CodeCritter: [Auto-Review] Starting review for ${document.fileName}.`);
   try {
     const persona = config.get('persona', 'Strict Tech Lead') as string;
-    console.log(`CodeCritter: [Auto-Review] Using persona: ${persona}`);
 
     const reviewResult = await generateAutomatedReview(
       content,
@@ -392,13 +385,20 @@ async function performAutomatedReview(
       apiKey,
       isDiff
     );
-    console.log('CodeCritter: [Auto-Review] AI response received:', JSON.stringify(reviewResult, null, 2));
+
+    const threshold = config.get<string>('reviewThreshold', 'medium');
+    const severityRank: Record<string, number> = { high: 3, medium: 2, low: 1 };
+    const thresholdRank = severityRank[threshold] ?? 2;
 
     const diagnostics: vscode.Diagnostic[] = [];
     diagnosticCollection.delete(document.uri);
 
     if (reviewResult && reviewResult.issues && reviewResult.issues.length > 0) {
       for (const issue of reviewResult.issues) {
+        if ((severityRank[issue.severity] ?? 1) < thresholdRank) {
+          continue;
+        }
+
         const line = issue.lineNumber - 1;
         if (line < 0 || line >= document.lineCount) {
           console.warn(`CodeCritter: AI returned an out-of-bounds line number (${issue.lineNumber}) and it was ignored.`);
@@ -417,8 +417,11 @@ async function performAutomatedReview(
       diagnosticCollection.set(document.uri, diagnostics);
     }
 
-    if (reviewResult && reviewResult.isClean && diagnostics.length === 0) {
-        console.log('CodeCritter: [Auto-Review] Code is clean. Displaying kudos.');
+    if (diagnostics.length > 0) {
+      reviewStatusBar.text = `$(warning) ${diagnostics.length} issue${diagnostics.length === 1 ? '' : 's'}`;
+      reviewStatusBar.tooltip = 'CodeCritter found issues — click a squiggle to fix';
+      reviewStatusBar.show();
+    } else if (reviewResult && reviewResult.isClean) {
         const kudosMessages = {
           'Strict Tech Lead': '✅ Solid work. This code meets standards.',
           'Supportive Mentor': '🎉 Fantastic job! This code is clean, readable, and well-structured.',
@@ -430,16 +433,20 @@ async function performAutomatedReview(
         const message = kudosMessages[persona as keyof typeof kudosMessages] || 'Good job! No issues found.';
         vscode.window.showInformationMessage(`CodeCritter: ${message}`);
 
+        reviewStatusBar.text = '$(check) Clean';
+        reviewStatusBar.tooltip = 'CodeCritter: No issues found';
+        reviewStatusBar.show();
+
         const stats = context.globalState.get('codeCritterStats', { kudos: 0, issuesFixed: 0 });
         stats.kudos += 1;
         context.globalState.update('codeCritterStats', stats);
-    } else if (diagnostics.length > 0) {
-        console.log(`CodeCritter: [Auto-Review] Found ${diagnostics.length} issues. Displaying diagnostics.`);
     }
 
   } catch (error) {
     console.error('CodeCritter: [Auto-Review] An error occurred.', error);
-    vscode.window.setStatusBarMessage('CodeCritter: Error performing review.', 5000);
+    reviewStatusBar.text = '$(error) Review error';
+    reviewStatusBar.tooltip = 'CodeCritter: Error during review';
+    reviewStatusBar.show();
   }
 }
 
@@ -465,7 +472,7 @@ export async function generateTestsHandler() {
     location: vscode.ProgressLocation.Notification,
     title: "CodeCritter is generating tests...",
     cancellable: false,
-  }, async (progress) => {
+  }, async () => {
     try {
       const testFileContent = await generateTests(codeToTest, apiKey);      
       const currentFilePath = editor.document.uri.fsPath;
@@ -486,8 +493,6 @@ export async function generateTestsHandler() {
 }
 
 export async function intelligentRefactorHandler() {
-  console.log('CodeCritter: "Intelligently Refactor" command triggered.');
-
   const editor = vscode.window.activeTextEditor;
   if (!editor) { return; }
 
@@ -505,80 +510,71 @@ export async function intelligentRefactorHandler() {
   const codeToRefactor = isSelection ? document.getText(selection) : document.getText();
   const fullFileText = document.getText();
 
+  let result: Awaited<ReturnType<typeof generateIntelligentRefactoring>>;
+
   await vscode.window.withProgress({
     location: vscode.ProgressLocation.Notification,
     title: `CodeCritter is refactoring your ${languageId} code...`,
     cancellable: false,
   }, async () => {
     try {
-      const result = isSelection
+      result = isSelection
         ? await generateIntelligentSelectionRefactoring(codeToRefactor, fullFileText, apiKey, languageId)
         : await generateIntelligentRefactoring(codeToRefactor, apiKey, languageId);
-
-      await editor.edit(editBuilder => {
-        const rangeToReplace = isSelection ? selection : new vscode.Range(
-          document.positionAt(0),
-          document.positionAt(fullFileText.length)
-        );
-        editBuilder.replace(rangeToReplace, result.refactoredCode);
-      });
-
-      let reportContent = `# CodeCritter Refactoring Report\n\n## Explanation\n${result.explanation}\n\n`;
-      if (result.alternativeSuggestion?.code) {
-        reportContent += `## Alternative Suggestion\n${result.alternativeSuggestion.explanation}\n\n\`\`\`${languageId}\n${result.alternativeSuggestion.code}\n\`\`\`\n`;
-      }
-      const reportDocument = await vscode.workspace.openTextDocument({ content: reportContent, language: 'markdown' });
-      await vscode.window.showTextDocument(reportDocument, vscode.ViewColumn.Beside);
-
     } catch (error) {
       console.error('CodeCritter: Error during intelligent refactoring.', error);
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
       vscode.window.showErrorMessage(`Refactoring failed: ${errorMessage}`);
     }
   });
-}
-async function astRefactor(
-  originalSource: string,
-  selection: string,
-  refactoredSelection: string
-): Promise<string> {
-  const sourceFile = ts.createSourceFile(
-    'temp.ts',
-    originalSource,
-    ts.ScriptTarget.Latest,
-    true
+
+  if (!result!) { return; }
+
+  // Build the proposed content: full file with refactored region spliced in
+  let proposedContent: string;
+  if (isSelection) {
+    const before = fullFileText.slice(0, document.offsetAt(selection.start));
+    const after = fullFileText.slice(document.offsetAt(selection.end));
+    proposedContent = before + result.refactoredCode + after;
+  } else {
+    proposedContent = result.refactoredCode;
+  }
+
+  // Open a virtual document with the proposed code and show a diff
+  const proposedDoc = await vscode.workspace.openTextDocument({
+    content: proposedContent,
+    language: languageId,
+  });
+
+  await vscode.commands.executeCommand(
+    'vscode.diff',
+    document.uri,
+    proposedDoc.uri,
+    `CodeCritter Refactoring — ${path.basename(document.fileName)}`
   );
 
-  const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
-    return (sf) => {
-      const visitor = (node: ts.Node): ts.Node => {
-        const nodeText = node.getFullText(sf).trim();
-        const selectionTrimmed = selection.trim();
+  // Notification stays until user decides (buttons prevent auto-dismiss)
+  const choice = await vscode.window.showInformationMessage(
+    `CodeCritter: ${result.explanation}`,
+    'Apply Changes',
+    'Discard'
+  );
 
-        if (nodeText === selectionTrimmed) {
-          const newSourceFile = ts.createSourceFile(
-            'new.ts',
-            refactoredSelection,
-            ts.ScriptTarget.Latest,
-            true
-          );
-          return newSourceFile.statements[0];
-        }
-        return ts.visitEachChild(node, visitor, context);
-      };
+  if (choice === 'Apply Changes') {
+    await vscode.window.showTextDocument(document);
+    await editor.edit(editBuilder => {
+      const rangeToReplace = isSelection
+        ? selection
+        : new vscode.Range(document.positionAt(0), document.positionAt(fullFileText.length));
+      editBuilder.replace(rangeToReplace, result.refactoredCode);
+    });
 
-      const newStatements = ts.visitNodes(sf.statements, visitor) as ts.NodeArray<ts.Statement>;
-      return context.factory.updateSourceFile(sf, newStatements);
-    };
-  };
-
-  const result = ts.transform(sourceFile, [transformer]);
-  const printer = ts.createPrinter();
-  const newSource = printer.printFile(result.transformed[0]);
-
-  result.dispose();
-
-  return newSource;
+    if (result.alternativeSuggestion?.code) {
+      const altContent = `# Alternative Suggestion\n${result.alternativeSuggestion.explanation}\n\n\`\`\`${languageId}\n${result.alternativeSuggestion.code}\n\`\`\`\n`;
+      const altDoc = await vscode.workspace.openTextDocument({ content: altContent, language: 'markdown' });
+      vscode.window.showTextDocument(altDoc, vscode.ViewColumn.Beside);
+    }
+  }
 }
 
 async function buildFileTree(dir: vscode.Uri, indent: string = ''): Promise<string> {
@@ -608,6 +604,17 @@ async function buildFileTree(dir: vscode.Uri, indent: string = ''): Promise<stri
   return tree;
 }
 
+const EXT_TO_LANGUAGE_ID: Record<string, string> = {
+  ts: 'typescript', tsx: 'typescriptreact',
+  js: 'javascript', jsx: 'javascriptreact',
+  py: 'python', go: 'go', java: 'java',
+  rs: 'rust', cs: 'csharp', rb: 'ruby',
+  php: 'php', swift: 'swift', kt: 'kotlin',
+  dart: 'dart', c: 'c', cpp: 'cpp', h: 'c', hpp: 'cpp',
+};
+
+const MAX_SUMMARY_FILE_LENGTH = 8000;
+
 async function getFileSummaries(
   files: vscode.Uri[],
   apiKey: string,
@@ -615,28 +622,31 @@ async function getFileSummaries(
 ): Promise<string[]> {
   const summaries: string[] = [];
   const totalFiles = files.length;
-  const availableLanguages = await vscode.languages.getLanguages();
 
   for (let i = 0; i < totalFiles; i++) {
     const file = files[i];
-    const increment = (1 / totalFiles) * 50;
     progress.report({
       message: `Analyzing ${path.basename(file.fsPath)}...`,
-      increment,
+      increment: (1 / totalFiles) * 50,
     });
     try {
-      const content = Buffer.from(
-        await vscode.workspace.fs.readFile(file)
-      ).toString('utf-8');
+      const raw = await vscode.workspace.fs.readFile(file);
+      const content = Buffer.from(raw).toString('utf-8');
 
-      const ext = path.extname(file.fsPath).substring(1);
-      const languageId = availableLanguages.find(lang => lang === ext) || 'plaintext';
+      const ext = path.extname(file.fsPath).substring(1).toLowerCase();
+      const languageId = EXT_TO_LANGUAGE_ID[ext];
 
-      if (content.trim().length > 50 && languageId !== 'plaintext') {
-        const summary = await summarizeFileContent(content, apiKey, languageId);
-        const relativePath = vscode.workspace.asRelativePath(file);
-        summaries.push(`- \`${relativePath}\`: ${summary}`);
+      if (!languageId || content.trim().length < 50) {
+        continue;
       }
+
+      const contentToSummarize = content.length > MAX_SUMMARY_FILE_LENGTH
+        ? content.slice(0, MAX_SUMMARY_FILE_LENGTH)
+        : content;
+
+      const summary = await summarizeFileContent(contentToSummarize, apiKey, languageId);
+      const relativePath = vscode.workspace.asRelativePath(file);
+      summaries.push(`- \`${relativePath}\`: ${summary}`);
     } catch (e) {
       console.warn(`Could not read or summarize file: ${file.fsPath}`, e);
     }
@@ -644,9 +654,69 @@ async function getFileSummaries(
   return summaries;
 }
 
-export async function generateReadmeHandler() {
-  console.log('CodeCritter: "Generate README" command triggered.');
+export async function fixIssueHandler(
+  document: vscode.TextDocument,
+  diagnostic: vscode.Diagnostic,
+  context: vscode.ExtensionContext
+): Promise<void> {
+  const config = vscode.workspace.getConfiguration('codecritter');
+  const apiKey = config.get<string>('apiKey');
+  if (!apiKey) {
+    vscode.window.showWarningMessage('Please set your Gemini API key first.');
+    return;
+  }
 
+  const editor = vscode.window.visibleTextEditors.find(
+    e => e.document.uri.toString() === document.uri.toString()
+  );
+  if (!editor) {
+    vscode.window.showWarningMessage('Please open the file in an editor first.');
+    return;
+  }
+
+  const CONTEXT_LINES = 15;
+  const diagLine = diagnostic.range.start.line;
+  const startLine = Math.max(0, diagLine - CONTEXT_LINES);
+  const endLine = Math.min(document.lineCount - 1, diagLine + CONTEXT_LINES);
+  const contextRange = new vscode.Range(startLine, 0, endLine, document.lineAt(endLine).text.length);
+  const contextCode = document.getText(contextRange);
+  const issueLineInContext = diagLine - startLine;
+
+  await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Notification, title: 'CodeCritter: Fixing issue...' },
+    async () => {
+      try {
+        const fix = await generateIssueFix(
+          contextCode,
+          diagnostic.message,
+          issueLineInContext,
+          document.languageId,
+          apiKey
+        );
+
+        await editor.edit(editBuilder => {
+          editBuilder.replace(contextRange, fix.fixedCode);
+        });
+
+        const remaining = (diagnosticCollection.get(document.uri) ?? []).filter(
+          d => d !== diagnostic
+        );
+        diagnosticCollection.set(document.uri, remaining);
+
+        vscode.window.showInformationMessage(`CodeCritter fixed it: ${fix.explanation}`);
+
+        const stats = context.globalState.get('codeCritterStats', { kudos: 0, issuesFixed: 0 });
+        stats.issuesFixed += 1;
+        await context.globalState.update('codeCritterStats', stats);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : 'Unknown error';
+        vscode.window.showErrorMessage(`CodeCritter: Could not generate fix — ${msg}`);
+      }
+    }
+  );
+}
+
+export async function generateReadmeHandler() {
   const workspaceFolders = vscode.workspace.workspaceFolders;
   if (!workspaceFolders || workspaceFolders.length === 0) {
     vscode.window.showErrorMessage('Please open a project folder first.');
@@ -676,8 +746,8 @@ export async function generateReadmeHandler() {
           packageJsonContent = Buffer.from(
             await vscode.workspace.fs.readFile(packageJsonUri)
           ).toString('utf-8');
-        } catch (error) {
-          console.log('CodeCritter: package.json not found, proceeding without it.');
+        } catch {
+          // package.json not present, proceed without it
         }
 
         progress.report({ increment: 15, message: 'Building file tree...' });

@@ -15,7 +15,8 @@ import {
   getIntelligentRefactorPrompt,
   getIntelligentSelectionRefactorPrompt,
   getReadmeGenerationPrompt,
-  getFileSummaryPrompt
+  getFileSummaryPrompt,
+  getIssueFixPrompt
 } from "./prompts";
 import { IntelligentRefactorResponse } from "../types";
 
@@ -37,7 +38,7 @@ export function parseAndValidateJsonResponse(rawText: string): any {
 
   if (
     Array.isArray(parsedJson.issues) &&
-    parsedJson.hasOwnProperty("isClean")
+    "isClean" in parsedJson
   ) {
     return parsedJson;
   }
@@ -49,7 +50,7 @@ export function parseAndValidateJsonResponse(rawText: string): any {
     }
   }
 
-  if (parsedJson.hasOwnProperty("ready")) {
+  if ("ready" in parsedJson) {
     if (parsedJson.ready && parsedJson.commitMessage) {
       return parsedJson;
     }
@@ -97,8 +98,6 @@ export async function generateAutomatedReview(
   isDiff: boolean = false
 ): Promise<any> {
   if (isCircuitBreakerOpen()) {
-    console.log("CodeCritter: [AI] Circuit breaker is open. Blocking call.");
-
     throw new Error(
       "Service is currently unavailable. Please try again later."
     );
@@ -106,9 +105,6 @@ export async function generateAutomatedReview(
 
   try {
     const prompt = getAutomatedReviewPrompt(content, persona, isDiff);
-    console.log(
-      `CodeCritter: [AI] Sending prompt for automated review (Persona: ${persona}).`
-    );
 
     const result = await retryWithBackoff(async () => {
       const genAI = new GoogleGenerativeAI(apiKey);
@@ -116,13 +112,11 @@ export async function generateAutomatedReview(
       const result = await model.generateContent(prompt);
       const response = await result.response;
       const text = response.text();
-      console.log("CodeCritter: [AI] Raw response from API:", text);
 
       return parseAndValidateJsonResponse(text);
     });
 
     recordSuccess();
-    console.log("CodeCritter: [AI] Successfully parsed AI response.");
 
     return result;
   } catch (error) {
@@ -184,7 +178,7 @@ export async function analyzeAndSuggestCommit(
       const text = response.text();
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
-        throw new Error("AI response did not contain a valid JSON object.");
+        throw new Error("Commit analysis response did not contain valid JSON.");
       }
       return JSON.parse(jsonMatch[0]);
     });
@@ -257,7 +251,6 @@ export async function generateIntelligentRefactoring(
   apiKey: string,
   languageId: string
 ): Promise<IntelligentRefactorResponse> {
-  console.log("CodeCritter: [AI] Starting intelligent file refactoring.");
 
   try {
     const prompt = getIntelligentRefactorPrompt(code, languageId);
@@ -267,7 +260,11 @@ export async function generateIntelligentRefactoring(
       const result = await model.generateContent(prompt);
       const response = await result.response;
       const text = response.text();
-      return JSON.parse(text.match(/\{[\s\S]*\}/)![0]);
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error("AI response for refactoring did not contain valid JSON.");
+      }
+      return JSON.parse(jsonMatch[0]);
     });
 
     recordSuccess();
@@ -285,8 +282,6 @@ export async function generateIntelligentSelectionRefactoring(
   apiKey: string,
   languageId: string
 ): Promise<IntelligentRefactorResponse> {
-  console.log("CodeCritter: [AI] Starting intelligent selection refactoring.");
-
   if (isCircuitBreakerOpen()) {
     throw new Error("Service is currently unavailable.");
   }
@@ -311,6 +306,43 @@ export async function generateIntelligentSelectionRefactoring(
   } catch (error) {
     recordFailure();
     console.error("CodeCritter: [AI] Failed to get intelligent selection refactoring.", error);
+    throw error;
+  }
+}
+
+export async function generateIssueFix(
+  contextCode: string,
+  issueMessage: string,
+  issueLineInContext: number,
+  languageId: string,
+  apiKey: string
+): Promise<{ fixedCode: string; explanation: string }> {
+  if (isCircuitBreakerOpen()) {
+    throw new Error("Service is currently unavailable.");
+  }
+
+  try {
+    const prompt = getIssueFixPrompt(contextCode, issueMessage, issueLineInContext, languageId);
+    const result = await retryWithBackoff(async () => {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      const response = await (await model.generateContent(prompt)).response;
+      const text = response.text();
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error("Fix response did not contain valid JSON.");
+      }
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (typeof parsed.fixedCode !== "string" || typeof parsed.explanation !== "string") {
+        throw new Error("Fix response missing required fields.");
+      }
+      return parsed as { fixedCode: string; explanation: string };
+    });
+
+    recordSuccess();
+    return result;
+  } catch (error) {
+    recordFailure();
     throw error;
   }
 }
@@ -343,7 +375,6 @@ export async function generateReadme(
   existingReadme: string | null,
   apiKey: string
 ): Promise<string> {
-  console.log("CodeCritter: [AI] Starting README generation/update.");
   if (isCircuitBreakerOpen()) {
     throw new Error("Service is currently unavailable.");
   }

@@ -1,14 +1,3 @@
-import * as vscode from 'vscode';
-
-export interface GitExtensionExports {
-    getAPI(version: 1): API;
-}
-export interface API {
-    repositories: Repository[];
-}
-export interface Repository {
-}
-
 export interface CircuitBreaker {
   failures: number;
   lastFailure: number | null;

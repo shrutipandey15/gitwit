@@ -6,19 +6,19 @@ export async function retryWithBackoff<T>(
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       return await operation();
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const status = (error as { status?: number })?.status;
       const isRetryable =
-        error.status === 503 ||
-        error.status === 429 ||
-        (error.status >= 500 && error.status < 600);
+        status === 503 ||
+        status === 429 ||
+        (status !== undefined && status >= 500 && status < 600);
       if (!isRetryable || attempt === maxRetries - 1) throw error;
 
+      const message = error instanceof Error ? error.message : String(error);
       const delay =
         baseDelay * Math.pow(2, attempt) + Math.random() * 1000;
       console.log(
-        `Attempt ${
-          attempt + 1
-        } failed: ${error.message}. Retrying in ${Math.round(delay)}ms...`
+        `Attempt ${attempt + 1} failed: ${message}. Retrying in ${Math.round(delay)}ms...`
       );
       await new Promise((resolve) => setTimeout(resolve, delay));
     }

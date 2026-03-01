@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 
 export function executeCommand(command: string): Promise<string> {
   return new Promise((resolve) => {
@@ -15,6 +15,21 @@ export function executeCommand(command: string): Promise<string> {
         return;
       }
       resolve(stdout);
+    });
+  });
+}
+
+export function executeGitCommit(message: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceFolder) {
+      return reject(new Error('No workspace folder found.'));
+    }
+    execFile('git', ['commit', '-m', message], { cwd: workspaceFolder }, (commitError) => {
+      if (commitError) {
+        return reject(new Error(`git commit failed: ${commitError.message}`));
+      }
+      resolve();
     });
   });
 }
