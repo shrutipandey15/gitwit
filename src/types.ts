@@ -17,6 +17,12 @@ export interface ReviewData {
   severity?: 'low' | 'medium' | 'high';
 }
 
+export interface RefactorIssue {
+  line: number;
+  issue: string;
+  category: string;
+}
+
 export interface IntelligentRefactorResponse {
   refactoredCode: string;
   explanation: string;

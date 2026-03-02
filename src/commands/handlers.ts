@@ -14,6 +14,7 @@ import {
   generateIssueFix
 } from "../ai/ai";
 import { executeCommand, executeGitCommit } from "../utils/command";
+import { buildProjectContext } from "../utils/projectContext";
 import { diagnosticCollection, reviewStatusBar } from "../extension";
 import * as path from "path";
 import { Buffer } from 'buffer';
@@ -378,12 +379,14 @@ async function performAutomatedReview(
 ) {
   try {
     const persona = config.get('persona', 'Strict Tech Lead') as string;
+    const projectContext = isDiff ? '' : await buildProjectContext(document);
 
     const reviewResult = await generateAutomatedReview(
       content,
       persona,
       apiKey,
-      isDiff
+      isDiff,
+      projectContext
     );
 
     const threshold = config.get<string>('reviewThreshold', 'medium');
@@ -450,6 +453,149 @@ async function performAutomatedReview(
   }
 }
 
+const LANGUAGE_FALLBACK_FRAMEWORKS: Record<string, string> = {
+  python:     'pytest',
+  go:         "Go's built-in testing package",
+  java:       'JUnit 5',
+  rust:       "Rust's built-in test framework",
+  csharp:     'NUnit',
+  ruby:       'RSpec',
+  swift:      'XCTest',
+  kotlin:     'JUnit 5 with kotlin.test',
+  dart:       'Flutter test',
+  php:        'PHPUnit',
+};
+
+async function detectTestFramework(document: vscode.TextDocument): Promise<string> {
+  const rootUri = vscode.workspace.workspaceFolders?.[0]?.uri;
+  if (!rootUri) {
+    return LANGUAGE_FALLBACK_FRAMEWORKS[document.languageId] ?? 'Jest';
+  }
+
+  try {
+    const raw = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(rootUri, 'package.json'));
+    const pkg = JSON.parse(Buffer.from(raw).toString('utf-8'));
+    const allDeps: Record<string, string> = { ...pkg.dependencies, ...pkg.devDependencies };
+
+    if (allDeps['vitest'])                         { return 'Vitest'; }
+    if (allDeps['jest'] || allDeps['ts-jest'] || allDeps['babel-jest']) { return 'Jest'; }
+    if (allDeps['mocha'])                          { return 'Mocha'; }
+    if (allDeps['jasmine'])                        { return 'Jasmine'; }
+    if (allDeps['ava'])                            { return 'AVA'; }
+    if (allDeps['tape'])                           { return 'Tape'; }
+
+    const testScript: string = pkg.scripts?.test ?? '';
+    if (testScript.includes('vitest')) { return 'Vitest'; }
+    if (testScript.includes('jest'))   { return 'Jest'; }
+    if (testScript.includes('mocha'))  { return 'Mocha'; }
+  } catch {
+  }
+
+  const configSignals: [string, string][] = [
+    ['vitest.config.ts',  'Vitest'],
+    ['vitest.config.js',  'Vitest'],
+    ['jest.config.ts',    'Jest'],
+    ['jest.config.js',    'Jest'],
+    ['jest.config.mjs',   'Jest'],
+    ['.mocharc.js',       'Mocha'],
+    ['.mocharc.yml',      'Mocha'],
+    ['.mocharc.json',     'Mocha'],
+    ['jasmine.json',      'Jasmine'],
+  ];
+  for (const [file, framework] of configSignals) {
+    try {
+      await vscode.workspace.fs.stat(vscode.Uri.joinPath(rootUri, file));
+      return framework;
+    } catch { /* not found */ }
+  }
+
+  return LANGUAGE_FALLBACK_FRAMEWORKS[document.languageId] ?? 'Jest';
+}
+
+const TESTABLE_SYMBOL_KINDS = new Set([
+  vscode.SymbolKind.Function,
+  vscode.SymbolKind.Method,
+  vscode.SymbolKind.Class,
+]);
+const MAX_SYMBOLS = 15;
+const MAX_SYMBOL_CODE_LINES = 80;
+
+async function resolveSignature(
+  document: vscode.TextDocument,
+  symbol: vscode.DocumentSymbol
+): Promise<string> {
+  try {
+    const hovers = await vscode.commands.executeCommand<vscode.Hover[]>(
+      'vscode.executeHoverProvider',
+      document.uri,
+      symbol.selectionRange.start
+    );
+    if (hovers && hovers.length > 0) {
+      for (const hover of hovers) {
+        for (const content of hover.contents) {
+          const raw = content instanceof vscode.MarkdownString
+            ? content.value
+            : typeof content === 'string' ? content : (content as { value?: string }).value ?? '';
+          // TypeScript/JS hover wraps the signature in a code fence
+          const match = raw.match(/```(?:typescript|javascript|ts|js)?\n([\s\S]*?)```/);
+          if (match) { return match[1].trim(); }
+        }
+      }
+    }
+  } catch { /* hover provider unavailable */ }
+  return symbol.detail ? `${symbol.name}: ${symbol.detail}` : symbol.name;
+}
+
+async function extractTestableSymbols(
+  document: vscode.TextDocument,
+  selectionRange?: vscode.Range
+): Promise<string> {
+  let allSymbols: vscode.DocumentSymbol[];
+  try {
+    allSymbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+      'vscode.executeDocumentSymbolProvider',
+      document.uri
+    ) ?? [];
+  } catch {
+    return '';
+  }
+
+  if (allSymbols.length === 0) { return ''; }
+
+  const candidates: vscode.DocumentSymbol[] = [];
+  for (const sym of allSymbols) {
+    if (TESTABLE_SYMBOL_KINDS.has(sym.kind)) {
+      candidates.push(sym);
+    }
+    if (sym.kind === vscode.SymbolKind.Class) {
+      for (const child of sym.children) {
+        if (child.kind === vscode.SymbolKind.Method) {
+          candidates.push(child);
+        }
+      }
+    }
+  }
+
+  const testable = candidates
+    .filter(s => selectionRange ? selectionRange.contains(s.range.start) : true)
+    .filter(s => !s.name.startsWith('_') && !s.name.startsWith('#') && s.name !== 'constructor')
+    .slice(0, MAX_SYMBOLS);
+
+  if (testable.length === 0) { return ''; }
+
+  const parts: string[] = [];
+  for (const sym of testable) {
+    const signature = await resolveSignature(document, sym);
+    const lines = document.getText(sym.range).split('\n');
+    const code = lines.length > MAX_SYMBOL_CODE_LINES
+      ? lines.slice(0, MAX_SYMBOL_CODE_LINES).join('\n') + '\n  // ...'
+      : lines.join('\n');
+    parts.push(`${vscode.SymbolKind[sym.kind]}: ${signature}\n\`\`\`\n${code}\n\`\`\``);
+  }
+
+  return parts.join('\n\n');
+}
+
 export async function generateTestsHandler() {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
@@ -464,17 +610,21 @@ export async function generateTestsHandler() {
     vscode.window.showWarningMessage("Please set your Gemini API key first.");
     return;
   }
-  
-  const selectedCode = editor.document.getText(editor.selection);
-  const codeToTest = selectedCode || editor.document.getText();
+
+  const framework = await detectTestFramework(editor.document);
+  const selection = editor.selection.isEmpty ? undefined : editor.selection;
+  const codeToTest = selection
+    ? editor.document.getText(selection)
+    : editor.document.getText();
+  const symbolsContext = await extractTestableSymbols(editor.document, selection);
 
   await vscode.window.withProgress({
     location: vscode.ProgressLocation.Notification,
-    title: "CodeCritter is generating tests...",
+    title: `CodeCritter is generating ${framework} tests...`,
     cancellable: false,
   }, async () => {
     try {
-      const testFileContent = await generateTests(codeToTest, apiKey);      
+      const testFileContent = await generateTests(codeToTest, apiKey, framework, symbolsContext);      
       const currentFilePath = editor.document.uri.fsPath;
       const fileExtension = path.extname(currentFilePath);
       const baseName = path.basename(currentFilePath, fileExtension);
@@ -509,6 +659,7 @@ export async function intelligentRefactorHandler() {
   const isSelection = !selection.isEmpty;
   const codeToRefactor = isSelection ? document.getText(selection) : document.getText();
   const fullFileText = document.getText();
+  const projectContext = await buildProjectContext(document);
 
   let result: Awaited<ReturnType<typeof generateIntelligentRefactoring>>;
 
@@ -520,7 +671,7 @@ export async function intelligentRefactorHandler() {
     try {
       result = isSelection
         ? await generateIntelligentSelectionRefactoring(codeToRefactor, fullFileText, apiKey, languageId)
-        : await generateIntelligentRefactoring(codeToRefactor, apiKey, languageId);
+        : await generateIntelligentRefactoring(codeToRefactor, apiKey, languageId, projectContext);
     } catch (error) {
       console.error('CodeCritter: Error during intelligent refactoring.', error);
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";

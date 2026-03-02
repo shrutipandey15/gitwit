@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import {
   isCircuitBreakerOpen,
   recordFailure,
@@ -12,53 +12,129 @@ import {
   getPrompt,
   getExplanationPrompt,
   getTestGenerationPrompt,
+  getRefactorAnalysisPrompt,
   getIntelligentRefactorPrompt,
   getIntelligentSelectionRefactorPrompt,
   getReadmeGenerationPrompt,
   getFileSummaryPrompt,
   getIssueFixPrompt
 } from "./prompts";
-import { IntelligentRefactorResponse } from "../types";
+import { IntelligentRefactorResponse, RefactorIssue } from "../types";
 
-export function parseAndValidateJsonResponse(rawText: string): any {
-  const jsonRegex = /\{[\s\S]*\}/;
-  const match = rawText.match(jsonRegex);
-  if (!match) {
-    throw new Error("AI response did not contain a valid JSON object.");
-  }
+const AUTOMATED_REVIEW_SCHEMA = {
+  type: SchemaType.OBJECT,
+  properties: {
+    issues: {
+      type: SchemaType.ARRAY,
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          lineNumber: { type: SchemaType.NUMBER, description: "1-indexed line number of the issue" },
+          severity:   { type: SchemaType.STRING, description: "Severity level: high, medium, or low" },
+          message:    { type: SchemaType.STRING, description: "Clear description of the issue" },
+        },
+        required: ["lineNumber", "severity", "message"],
+      },
+    },
+    isClean: { type: SchemaType.BOOLEAN, description: "true only when the code has no significant issues" },
+  },
+  required: ["issues", "isClean"],
+};
 
-  const jsonString = match[0];
-  let parsedJson;
-  try {
-    parsedJson = JSON.parse(jsonString);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    throw new Error(`Failed to parse AI response as JSON: ${message}`);
-  }
+const MANUAL_REVIEW_SCHEMA = {
+  type: SchemaType.OBJECT,
+  properties: {
+    review: {
+      type: SchemaType.OBJECT,
+      properties: {
+        summary:     { type: SchemaType.STRING },
+        critique:    { type: SchemaType.STRING },
+        suggestions: { type: SchemaType.STRING },
+      },
+      required: ["summary", "critique", "suggestions"],
+    },
+    productionRisk: {
+      type: SchemaType.ARRAY,
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          risk:   { type: SchemaType.STRING },
+          isSafe: { type: SchemaType.BOOLEAN },
+        },
+        required: ["risk", "isSafe"],
+      },
+    },
+  },
+  required: ["review", "productionRisk"],
+};
 
-  if (
-    Array.isArray(parsedJson.issues) &&
-    "isClean" in parsedJson
-  ) {
-    return parsedJson;
-  }
+const COMMIT_SCHEMA = {
+  type: SchemaType.OBJECT,
+  properties: {
+    ready:         { type: SchemaType.BOOLEAN },
+    commitMessage: { type: SchemaType.STRING },
+    reason:        { type: SchemaType.STRING },
+  },
+  required: ["ready"],
+};
 
-  if (parsedJson.review && Array.isArray(parsedJson.productionRisk)) {
-    const requiredReviewKeys = ["summary", "critique", "suggestions"];
-    if (requiredReviewKeys.every((key) => key in parsedJson.review)) {
-      return parsedJson;
-    }
-  }
+const REFACTOR_SCHEMA = {
+  type: SchemaType.OBJECT,
+  properties: {
+    refactoredCode: { type: SchemaType.STRING },
+    explanation:    { type: SchemaType.STRING },
+    alternativeSuggestion: {
+      type: SchemaType.OBJECT,
+      properties: {
+        explanation: { type: SchemaType.STRING },
+        code:        { type: SchemaType.STRING },
+      },
+      required: ["explanation", "code"],
+    },
+  },
+  required: ["refactoredCode", "explanation"],
+};
 
-  if ("ready" in parsedJson) {
-    if (parsedJson.ready && parsedJson.commitMessage) {
-      return parsedJson;
-    }
-    if (!parsedJson.ready && parsedJson.reason) {
-      return parsedJson;
-    }
-  }
-  throw new Error("Invalid or incomplete AI response format.");
+const ISSUE_FIX_SCHEMA = {
+  type: SchemaType.OBJECT,
+  properties: {
+    fixedCode:   { type: SchemaType.STRING },
+    explanation: { type: SchemaType.STRING },
+  },
+  required: ["fixedCode", "explanation"],
+};
+
+const REFACTOR_ANALYSIS_SCHEMA = {
+  type: SchemaType.OBJECT,
+  properties: {
+    issues: {
+      type: SchemaType.ARRAY,
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          line:     { type: SchemaType.NUMBER, description: "1-indexed line number where the issue occurs" },
+          issue:    { type: SchemaType.STRING, description: "Concise description of the specific problem" },
+          category: { type: SchemaType.STRING, description: "Category: naming, async-patterns, error-handling, type-safety, dead-code, performance, readability, or best-practices" },
+        },
+        required: ["line", "issue", "category"],
+      },
+    },
+  },
+  required: ["issues"],
+};
+
+function getJsonModel(apiKey: string, schema: object) {
+  return new GoogleGenerativeAI(apiKey).getGenerativeModel({
+    model: "gemini-2.5-flash",
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: schema as any,
+    },
+  });
+}
+
+function getTextModel(apiKey: string) {
+  return new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: "gemini-2.5-flash" });
 }
 
 export async function generateReview(
@@ -67,22 +143,13 @@ export async function generateReview(
   apiKey: string
 ): Promise<any> {
   if (isCircuitBreakerOpen()) {
-    throw new Error(
-      "Service is currently unavailable. Please try again later."
-    );
+    throw new Error("Service is currently unavailable. Please try again later.");
   }
-
   try {
-    const prompt = getPrompt(persona, code);
     const result = await retryWithBackoff(async () => {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-      return parseAndValidateJsonResponse(text);
+      const { response } = await getJsonModel(apiKey, MANUAL_REVIEW_SCHEMA).generateContent(getPrompt(persona, code));
+      return JSON.parse(response.text());
     });
-
     recordSuccess();
     return result;
   } catch (error) {
@@ -95,37 +162,22 @@ export async function generateAutomatedReview(
   content: string,
   persona: string,
   apiKey: string,
-  isDiff: boolean = false
+  isDiff: boolean = false,
+  projectContext: string = ''
 ): Promise<any> {
   if (isCircuitBreakerOpen()) {
-    throw new Error(
-      "Service is currently unavailable. Please try again later."
-    );
+    throw new Error("Service is currently unavailable. Please try again later.");
   }
-
   try {
-    const prompt = getAutomatedReviewPrompt(content, persona, isDiff);
-
     const result = await retryWithBackoff(async () => {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-
-      return parseAndValidateJsonResponse(text);
+      const { response } = await getJsonModel(apiKey, AUTOMATED_REVIEW_SCHEMA).generateContent(getAutomatedReviewPrompt(content, persona, isDiff, projectContext));
+      return JSON.parse(response.text());
     });
-
     recordSuccess();
-
     return result;
   } catch (error) {
     recordFailure();
-    console.error(
-      "CodeCritter: [AI] Failed to get or parse AI response.",
-      error
-    );
-
+    console.error("CodeCritter: [AI] Failed to get automated review.", error);
     throw error;
   }
 }
@@ -135,21 +187,13 @@ export async function generateDocstring(
   apiKey: string
 ): Promise<string> {
   if (isCircuitBreakerOpen()) {
-    throw new Error(
-      "Service is currently unavailable. Please try again later."
-    );
+    throw new Error("Service is currently unavailable. Please try again later.");
   }
-
   try {
-    const prompt = getDocstringPrompt(code);
     const result = await retryWithBackoff(async () => {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
+      const { response } = await getTextModel(apiKey).generateContent(getDocstringPrompt(code));
       return response.text();
     });
-
     recordSuccess();
     return result;
   } catch (error) {
@@ -166,23 +210,11 @@ export async function analyzeAndSuggestCommit(
   if (isCircuitBreakerOpen()) {
     throw new Error("Service is currently unavailable. Please try again later.");
   }
-
   try {
-    const prompt = getCommitMessagePrompt(diff, filePath); 
-
     const result = await retryWithBackoff(async () => {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error("Commit analysis response did not contain valid JSON.");
-      }
-      return JSON.parse(jsonMatch[0]);
+      const { response } = await getJsonModel(apiKey, COMMIT_SCHEMA).generateContent(getCommitMessagePrompt(diff, filePath));
+      return JSON.parse(response.text());
     });
-
     recordSuccess();
     return result;
   } catch (error) {
@@ -196,21 +228,13 @@ export async function generateExplanation(
   apiKey: string
 ): Promise<string> {
   if (isCircuitBreakerOpen()) {
-    throw new Error(
-      "Service is currently unavailable. Please try again later."
-    );
+    throw new Error("Service is currently unavailable. Please try again later.");
   }
-
   try {
-    const prompt = getExplanationPrompt(code);
     const result = await retryWithBackoff(async () => {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
+      const { response } = await getTextModel(apiKey).generateContent(getExplanationPrompt(code));
       return response.text();
     });
-
     recordSuccess();
     return result;
   } catch (error) {
@@ -221,23 +245,18 @@ export async function generateExplanation(
 
 export async function generateTests(
   code: string,
-  apiKey: string
+  apiKey: string,
+  framework: string = "Jest",
+  symbolsContext: string = ""
 ): Promise<string> {
   if (isCircuitBreakerOpen()) {
     throw new Error("Service is currently unavailable.");
   }
-
   try {
-    const prompt = getTestGenerationPrompt(code);
     const result = await retryWithBackoff(async () => {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text().replace(/```(javascript|typescript)?/g, '').trim();
-      return text;
+      const { response } = await getTextModel(apiKey).generateContent(getTestGenerationPrompt(code, framework, symbolsContext));
+      return response.text().replace(/```(javascript|typescript)?\n?/g, "").replace(/```$/g, "").trim();
     });
-
     recordSuccess();
     return result;
   } catch (error) {
@@ -249,24 +268,27 @@ export async function generateTests(
 export async function generateIntelligentRefactoring(
   code: string,
   apiKey: string,
-  languageId: string
+  languageId: string,
+  projectContext: string = ''
 ): Promise<IntelligentRefactorResponse> {
-
+  if (isCircuitBreakerOpen()) {
+    throw new Error("Service is currently unavailable.");
+  }
   try {
-    const prompt = getIntelligentRefactorPrompt(code, languageId);
-    const result = await retryWithBackoff(async () => {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error("AI response for refactoring did not contain valid JSON.");
-      }
-      return JSON.parse(jsonMatch[0]);
+    const { issues } = await retryWithBackoff(async () => {
+      const { response } = await getJsonModel(apiKey, REFACTOR_ANALYSIS_SCHEMA).generateContent(getRefactorAnalysisPrompt(code, languageId));
+      return JSON.parse(response.text()) as { issues: RefactorIssue[] };
     });
 
+    if (issues.length === 0) {
+      recordSuccess();
+      return { refactoredCode: code, explanation: "No refactoring needed — the code already follows best practices." };
+    }
+
+    const result = await retryWithBackoff(async () => {
+      const { response } = await getJsonModel(apiKey, REFACTOR_SCHEMA).generateContent(getIntelligentRefactorPrompt(code, languageId, issues, projectContext));
+      return JSON.parse(response.text()) as IntelligentRefactorResponse;
+    });
     recordSuccess();
     return result;
   } catch (error) {
@@ -285,22 +307,21 @@ export async function generateIntelligentSelectionRefactoring(
   if (isCircuitBreakerOpen()) {
     throw new Error("Service is currently unavailable.");
   }
-
   try {
-    const prompt = getIntelligentSelectionRefactorPrompt(selection, fullCode, languageId);
-    const result = await retryWithBackoff(async () => {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error("AI response did not contain a valid JSON object.");
-      }
-      return JSON.parse(jsonMatch[0]);
+    const { issues } = await retryWithBackoff(async () => {
+      const { response } = await getJsonModel(apiKey, REFACTOR_ANALYSIS_SCHEMA).generateContent(getRefactorAnalysisPrompt(selection, languageId));
+      return JSON.parse(response.text()) as { issues: RefactorIssue[] };
     });
 
+    if (issues.length === 0) {
+      recordSuccess();
+      return { refactoredCode: selection, explanation: "No refactoring needed — the selection already follows best practices." };
+    }
+
+    const result = await retryWithBackoff(async () => {
+      const { response } = await getJsonModel(apiKey, REFACTOR_SCHEMA).generateContent(getIntelligentSelectionRefactorPrompt(selection, fullCode, languageId, issues));
+      return JSON.parse(response.text()) as IntelligentRefactorResponse;
+    });
     recordSuccess();
     return result;
   } catch (error) {
@@ -320,25 +341,11 @@ export async function generateIssueFix(
   if (isCircuitBreakerOpen()) {
     throw new Error("Service is currently unavailable.");
   }
-
   try {
-    const prompt = getIssueFixPrompt(contextCode, issueMessage, issueLineInContext, languageId);
     const result = await retryWithBackoff(async () => {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      const response = await (await model.generateContent(prompt)).response;
-      const text = response.text();
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error("Fix response did not contain valid JSON.");
-      }
-      const parsed = JSON.parse(jsonMatch[0]);
-      if (typeof parsed.fixedCode !== "string" || typeof parsed.explanation !== "string") {
-        throw new Error("Fix response missing required fields.");
-      }
-      return parsed as { fixedCode: string; explanation: string };
+      const { response } = await getJsonModel(apiKey, ISSUE_FIX_SCHEMA).generateContent(getIssueFixPrompt(contextCode, issueMessage, issueLineInContext, languageId));
+      return JSON.parse(response.text()) as { fixedCode: string; explanation: string };
     });
-
     recordSuccess();
     return result;
   } catch (error) {
@@ -353,18 +360,14 @@ export async function summarizeFileContent(
   languageId: string
 ): Promise<string> {
   try {
-    const prompt = getFileSummaryPrompt(content, languageId);
     const result = await retryWithBackoff(async () => {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      return response.text().replace(/["']/g, '').trim();
+      const { response } = await getTextModel(apiKey).generateContent(getFileSummaryPrompt(content, languageId));
+      return response.text().replace(/["']/g, "").trim();
     });
     return result;
   } catch (error) {
-    console.error('CodeCritter: [AI] Failed to summarize file.', error);
-    return 'Could not be summarized due to an API error.';
+    console.error("CodeCritter: [AI] Failed to summarize file.", error);
+    return "Could not be summarized due to an API error.";
   }
 }
 
@@ -378,22 +381,11 @@ export async function generateReadme(
   if (isCircuitBreakerOpen()) {
     throw new Error("Service is currently unavailable.");
   }
-
   try {
-    const prompt = getReadmeGenerationPrompt(
-      packageJson,
-      fileTree,
-      fileSummaries,
-      existingReadme
-    );
     const result = await retryWithBackoff(async () => {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      return response.text().replace(/^```markdown\n|```$/g, '');
+      const { response } = await getTextModel(apiKey).generateContent(getReadmeGenerationPrompt(packageJson, fileTree, fileSummaries, existingReadme));
+      return response.text().replace(/^```markdown\n|```$/g, "");
     });
-
     recordSuccess();
     return result;
   } catch (error) {

@@ -1,23 +1,23 @@
 export function getAutomatedReviewPrompt(
   content: string,
   persona: string,
-  isDiff: boolean = false
+  isDiff: boolean = false,
+  projectContext: string = ''
 ): string {
   const contentType = isDiff ? 'code changes (diff)' : 'code';
   const baseInstruction = `
-    You are performing an automated code review on the following code snippet.
-    Analyze the provided code and respond in pure JSON format.
-    The JSON object must have two top-level keys:
-    1. "issues": An array of objects for any problems found. Each object has "lineNumber", "severity", and "message".
-    2. "isClean": A boolean value. Set this to true ONLY if the code is well-written and has no significant issues.
-
-    If there are no issues, you must return an empty "issues" array and set "isClean" to true.
-    Focus on code quality, potential bugs, and best practices.
+    You are performing an automated code review.
+    Analyze the ${contentType} below and populate the response fields:
+    - "issues": list each problem with its 1-indexed line number, a severity of "high", "medium", or "low", and a clear message.
+    - "isClean": set to true ONLY when there are genuinely no significant issues.
+    Focus on correctness, potential bugs, and best practices. Do not invent issues.
   `;
 
-  const personaContext = getPersonaContext(persona);
+  const contextBlock = projectContext
+    ? `\n\nPROJECT CONTEXT (exported types and interfaces from local imports):\n${projectContext}`
+    : '';
 
-  return `${personaContext} ${baseInstruction}\n\n${contentType.toUpperCase()}:\n\`\`\`\n${content}\n\`\`\``;
+  return `${getPersonaContext(persona)} ${baseInstruction}${contextBlock}\n\n${contentType.toUpperCase()}:\n\`\`\`\n${content}\n\`\`\``;
 }
 
 export function getPersonaContext(persona: string): string {
@@ -41,26 +41,13 @@ export function getPersonaContext(persona: string): string {
 
 export function getPrompt(persona: string, code: string): string {
   const baseInstruction = `
-    Analyze the following code snippet. Provide your review in a pure JSON format, with no markdown wrappers or extra text.
-    The JSON object must have two top-level keys:
-    1. "review": An object with three string keys: "summary", "critique", and "suggestions".
-    2. "productionRisk": An array of objects, where each object has a "risk" (string) and a "isSafe" (boolean).
+    Analyze the code below and populate the response fields:
+    - "review": provide a "summary" (overall assessment), "critique" (specific problems), and "suggestions" (concrete improvements).
+    - "productionRisk": list each potential production concern with a "risk" description and "isSafe" boolean.
   `;
 
-  switch (persona) {
-    case 'Strict Tech Lead':
-      return `You are a Strict Tech Lead. ${baseInstruction}\n\nCode:\n\`\`\`\n${code}\n\`\`\``;
-    case 'Supportive Mentor':
-      return `You are a Supportive Mentor. ${baseInstruction}\n\nCode:\n\`\`\`\n${code}\n\`\`\``;
-    case 'Sarcastic Reviewer':
-      return `You are a Sarcastic Reviewer. ${baseInstruction}\n\nCode:\n\`\`\`\n${code}\n\`\`\``;
-    case 'Code Poet':
-      return `You are a Code Poet. ${baseInstruction}\n\nCode:\n\`\`\`\n${code}\n\`\`\``;
-    case 'Paranoid Security Engineer':
-      return `You are a Paranoid Security Engineer. Focus ONLY on security vulnerabilities. ${baseInstruction}\n\nCode:\n\`\`\`\n${code}\n\`\`\``;
-    default:
-      return `Analyze this code: ${code}`;
-  }
+  const personaContext = getPersonaContext(persona);
+  return `${personaContext} ${baseInstruction}\n\nCode:\n\`\`\`\n${code}\n\`\`\``;
 }
 
 export function getDocstringPrompt(code: string): string {
@@ -78,27 +65,20 @@ export function getDocstringPrompt(code: string): string {
 
 export function getCommitMessagePrompt(diff: string, filePath: string): string {
   return `
-    You are an expert at writing conventional git commit messages. Your primary task is to generate a clear and concise commit message for the following code diff.
+    You are an expert at writing conventional git commit messages.
 
-    **Context:**
-    - The changes were made in the file: \`${filePath}\`
-    - Use this file path to infer the correct <scope>. For example, if the path is 'src/auth/utils.ts', the scope could be 'auth' or 'auth-utils'.
+    The changes were made in: \`${filePath}\`
+    Use the file path to infer the correct scope (e.g. 'src/auth/utils.ts' → scope 'auth').
 
-    **Format:**
-    The message MUST follow the conventional commit format: \`<type>(<scope>): <short summary>\`
+    Commit message format: \`<type>(<scope>): <short summary>\`
+    Examples: feat(auth): add password reset, fix(parser): handle null values, refactor(ui): simplify button
 
-    **Examples of good commit messages:**
-    - feat(auth): add password reset functionality
-    - fix(parser): handle unexpected null values
-    - refactor(ui): simplify button component styles
-    - docs(readme): update installation instructions
+    Populate the response fields:
+    - "ready": always true when a commit message can be generated
+    - "commitMessage": one high-quality conventional commit message based on the diff
+    - "reason": only populate if you cannot determine intent from the diff
 
-    **Instructions:**
-    - Analyze the diff to understand the intent (feature, fix, refactor, docs, etc.).
-    - Based on the intent and file path, generate ONE high-quality commit message.
-    - Respond in a pure JSON format: \`{ "ready": true, "commitMessage": "..." }\`
-
-    **Code Diff:**
+    Code diff:
     \`\`\`
     ${diff}
     \`\`\`
@@ -120,89 +100,135 @@ export function getExplanationPrompt(code: string): string {
   `;
 }
 
-export function getTestGenerationPrompt(code: string, framework: string = 'Jest'): string {
-  return `
-    You are an expert software engineer specializing in testing.
-    Analyze the following code snippet and generate a complete test file for it using the ${framework} testing framework.
-    The response should be the full code for the test file, including necessary imports and mocks.
-    Format the response as a single block of code, ready to be pasted into a file. Do not include any other text or explanation.
+export function getTestGenerationPrompt(
+  code: string,
+  framework: string = 'Jest',
+  symbolsContext: string = ''
+): string {
+  if (symbolsContext) {
+    return `You are an expert software engineer writing comprehensive ${framework} tests.
 
-    Code to test:
-    \`\`\`
-    ${code}
-    \`\`\`
-  `;
+The following are the testable functions and classes extracted from the file, with their exact resolved type signatures and implementations:
+
+${symbolsContext}
+
+Generate a complete, runnable ${framework} test file that:
+- Tests each function/method listed above
+- Uses the exact type signatures above to construct accurate test inputs and expected outputs
+- Covers normal cases, edge cases (empty inputs, nulls, boundary values), and error/exception conditions
+- Includes appropriate mocks/stubs for external dependencies (HTTP calls, databases, file system, etc.)
+- Follows ${framework} best practices and conventions
+
+Output ONLY the complete test file code. No explanation, no markdown fences around the file.`;
+  }
+
+  return `You are an expert software engineer specializing in testing.
+Generate a complete ${framework} test file for the code below.
+Include all necessary imports, mocks, and test cases covering normal behavior, edge cases, and errors.
+Output ONLY the test file code — no explanation, no markdown fences around the file.
+
+Code to test:
+\`\`\`
+${code}
+\`\`\``;
+}
+
+export function getRefactorAnalysisPrompt(code: string, languageId: string): string {
+  const languageName = languageId.charAt(0).toUpperCase() + languageId.slice(1);
+  return `You are an expert ${languageName} code analyst. Your ONLY job is to identify specific, actionable code quality issues. Do NOT fix anything.
+
+For each issue found, populate:
+- "line": the 1-indexed line number where the issue occurs
+- "issue": a concise, specific description of the problem (e.g., "uses var instead of const", "missing error handling on async call", "magic number should be a named constant")
+- "category": one of: naming, async-patterns, error-handling, type-safety, dead-code, performance, readability, best-practices
+
+Rules:
+- Report REAL issues only — do not invent problems.
+- Be specific about line numbers. Do not report vague concerns.
+- Focus on clearly improvable issues, not minor stylistic opinions.
+- If the code is already clean and idiomatic, return an empty "issues" array.
+
+${languageName} code to analyze:
+\`\`\`${languageId}
+${code}
+\`\`\``;
 }
 
 export function getIntelligentRefactorPrompt(
   code: string,
-  languageId: string
+  languageId: string,
+  issues: { line: number; issue: string; category: string }[],
+  projectContext: string = ''
 ): string {
   const languageName = languageId.charAt(0).toUpperCase() + languageId.slice(1);
+  const issueList = issues
+    .map((i, idx) => `${idx + 1}. Line ${i.line} [${i.category}]: ${i.issue}`)
+    .join('\n');
 
-  return `
-    You are an expert software architect specializing in the ${languageName} programming language.
-    Your task is to analyze and refactor the provided code snippet to align with modern best practices for ${languageName}.
+  const contextBlock = projectContext
+    ? `\nPROJECT CONTEXT (exported types and interfaces from local imports — align fixes with these):\n${projectContext}\n`
+    : '';
 
-    **CRITICAL RULES:**
-    1.  **LANGUAGE-SPECIFIC:** The output code MUST be 100% valid, runnable ${languageName}. Do NOT use syntax from other languages.
-    2.  **COMPLETE & VALID CODE:** The "refactoredCode" MUST be complete and syntactically correct. It cannot contain placeholders, omissions, or comments like "[...]".
-    3.  **PRESERVE LITERALS:** You MUST preserve complex literals (especially regular expressions, SQL queries, etc.) exactly as they are unless the refactoring is specifically about improving that literal.
+  return `You are an expert software architect specializing in ${languageName}.
+Fix ONLY the specific issues listed below. Do NOT make any other changes to the code.
+${contextBlock}
+Issues to fix:
+${issueList}
 
-    **Output Format:**
-    Respond in a pure JSON format:
-    {
-      "refactoredCode": "...",
-      "explanation": "...",
-      "alternativeSuggestion": { "explanation": "...", "code": "..." }
-    }
+Rules:
+- Output code MUST be 100% valid, runnable ${languageName} — no syntax from other languages.
+- "refactoredCode" must be complete and syntactically correct — no placeholders or "[...]" omissions.
+- Preserve ALL code unrelated to the listed issues exactly as-is.
+- Preserve complex literals (regex, SQL queries, etc.) exactly unless they are the reported issue.
 
-    **Instructions:**
-    1.  **refactoredCode**: The full, complete, and syntactically valid refactored ${languageName} code.
-    2.  **explanation**: A brief summary of the main improvement.
-    3.  **alternativeSuggestion**: An optional, more optimal architectural pattern, also written in valid ${languageName}.
+Populate the response fields:
+- "refactoredCode": the full, complete fixed ${languageName} code.
+- "explanation": one concise sentence summarizing the fixes applied.
+- "alternativeSuggestion": optionally, a more optimal architectural approach (also valid ${languageName}).
 
-    Original ${languageName} Code:
-    \`\`\`${languageId}
-    ${code}
-    \`\`\`
-  `;
+Original ${languageName} code:
+\`\`\`${languageId}
+${code}
+\`\`\``;
 }
 
 export function getIntelligentSelectionRefactorPrompt(
   selection: string,
   fullCode: string,
-  languageId: string
+  languageId: string,
+  issues: { line: number; issue: string; category: string }[]
 ): string {
   const languageName = languageId.charAt(0).toUpperCase() + languageId.slice(1);
-  return `
-    You are an expert software architect specializing in ${languageName}. Your primary task is to refactor the selected code snippet ('Code to Refactor').
-    Use the 'Full File Context' to understand the existing architectural patterns and coding style.
+  const issueList = issues
+    .map((i, idx) => `${idx + 1}. Line ${i.line} [${i.category}]: ${i.issue}`)
+    .join('\n');
 
-    **CRITICAL RULES:**
-    1.  **LANGUAGE-SPECIFIC:** The output code MUST be valid, runnable ${languageName}.
-    2.  **COMPLETE & VALID SYNTAX:** The "refactoredCode" must be 100% complete and syntactically correct.
-    3.  **PRESERVE LITERALS:** You MUST preserve complex literals (like regular expressions) exactly as they are.
+  return `You are an expert software architect specializing in ${languageName}.
+Fix ONLY the specific issues listed below in the 'Code to Refactor' snippet. Use 'Full File Context' only to match existing patterns and style.
 
-    **Output Format:**
-    Respond in a pure JSON format:
-    {
-      "refactoredCode": "...",
-      "explanation": "...",
-      "alternativeSuggestion": { "explanation": "...", "code": "..." }
-    }
+Issues to fix (line numbers are relative to the snippet):
+${issueList}
 
-    ---
-    **Full File Context:**
-    \`\`\`${languageId}
-    ${fullCode}
-    \`\`\`
-    ---
-    **Code to Refactor:**
-    \`\`\`${languageId}
-    ${selection}
-    \`\`\`
-  `;
+Rules:
+- Output code MUST be valid, runnable ${languageName}.
+- "refactoredCode" must be 100% complete and syntactically correct — no placeholders.
+- Preserve ALL code in the snippet unrelated to the listed issues exactly as-is.
+- Preserve complex literals (regex, etc.) exactly as they are.
+
+Populate the response fields:
+- "refactoredCode": the complete fixed snippet only (not the full file).
+- "explanation": one concise sentence summarizing the fixes applied.
+- "alternativeSuggestion": optionally, a more optimal architectural approach (also valid ${languageName}).
+
+Full File Context:
+\`\`\`${languageId}
+${fullCode}
+\`\`\`
+
+Code to Refactor:
+\`\`\`${languageId}
+${selection}
+\`\`\``;
 }
 
 export function getReadmeGenerationPrompt(
@@ -284,27 +310,19 @@ export function getIssueFixPrompt(
   const languageName = languageId.charAt(0).toUpperCase() + languageId.slice(1);
   return `You are a precise code repair assistant specializing in ${languageName}.
 
-A code review found this issue:
+A code review found this issue on line ${issueLineInContext + 1} (1-indexed):
 "${issueMessage}"
-
-The issue is on line ${issueLineInContext + 1} of the snippet below (1-indexed).
 
 Code snippet (${languageName}):
 \`\`\`${languageId}
 ${contextCode}
 \`\`\`
 
-Return ONLY a JSON object:
-{
-  "fixedCode": "the complete corrected snippet with the issue resolved",
-  "explanation": "one concise sentence describing the change"
-}
+Populate the response fields:
+- "fixedCode": the COMPLETE snippet with the minimal fix applied — all same lines, same indentation, no unrelated changes.
+- "explanation": one concise sentence describing exactly what was changed and why.
 
-Rules:
-- Return the COMPLETE snippet (all the same lines) with the fix applied
-- Make ONLY the minimal change needed to address the reported issue
-- Preserve all indentation, style, and surrounding code exactly
-- Do NOT add comments, docstrings, or unrelated improvements`;
+Do NOT add comments, docstrings, or improvements beyond the reported issue.`;
 }
 
 export function getFileSummaryPrompt(content: string, languageId: string): string {
