@@ -29,8 +29,6 @@
     "automated review"
   ],
   "activationEvents": [
-    "onCommand:codecritter.start",
-    "onCommand:codecritter.toggleAutoReview",
     "workspaceContains:.git"
   ],
   "main": "./dist/extension.js",
@@ -80,6 +78,11 @@
         "command": "codecritter.fixIssue",
         "title": "Fix with CodeCritter",
         "category": "CodeCritter"
+      },
+      {
+        "command": "codecritter.commitAssist",
+        "title": "CodeCritter: Suggest Commit Message",
+        "category": "CodeCritter"
       }
     ],
     "menus": {
@@ -103,11 +106,6 @@
     "configuration": {
       "title": "CodeCritter",
       "properties": {
-        "codecritter.apiKey": {
-          "type": "string",
-          "default": "",
-          "description": "Your personal Google AI API key for CodeCritter to use. Get one from https://makersuite.google.com/app/apikey"
-        },
         "codecritter.persona": {
           "type": "string",
           "default": "Strict Tech Lead",

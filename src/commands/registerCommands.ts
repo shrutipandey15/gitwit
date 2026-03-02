@@ -1,5 +1,16 @@
 import * as vscode from 'vscode';
-import { startReviewHandler, toggleAutoReviewHandler, selectPersonaHandler, explainCodeHandler, showStatsHandler, generateTestsHandler, intelligentRefactorHandler, generateReadmeHandler, fixIssueHandler } from './handlers';
+import {
+  startReviewHandler,
+  toggleAutoReviewHandler,
+  selectPersonaHandler,
+  explainCodeHandler,
+  showStatsHandler,
+  generateTestsHandler,
+  intelligentRefactorHandler,
+  generateReadmeHandler,
+  fixIssueHandler,
+  commitAssistHandler,
+} from './handlers';
 import { CodeCritterActionProvider } from './codeActionProvider';
 
 export function registerCommands(context: vscode.ExtensionContext) {
@@ -22,68 +33,27 @@ export function registerCommands(context: vscode.ExtensionContext) {
 
   updateStatusBarItem();
 
-  const startReviewDisposable = vscode.commands.registerCommand(
-    'codecritter.start',
-    () => startReviewHandler(context)
-  );
-
-  const toggleAutoReviewDisposable = vscode.commands.registerCommand(
-    'codecritter.toggleAutoReview',
-    toggleAutoReviewHandler
-  );
-
-  const selectPersonaDisposable = vscode.commands.registerCommand(
-    'codecritter.selectPersona',
-    selectPersonaHandler
-  );
-
-  const explainCodeDisposable = vscode.commands.registerCommand(
-  'codecritter.explainCode',
-  explainCodeHandler
-  );
-
-  const showStatsDisposable = vscode.commands.registerCommand(
-  'codecritter.showStats',
-  () => showStatsHandler(context)
-  );
-
-  const generateTestsDisposable = vscode.commands.registerCommand(
-    'codecritter.generateTests',
-    generateTestsHandler
-  );
-    const intelligentRefactorDisposable = vscode.commands.registerCommand(
-    'codecritter.refactor',
-    intelligentRefactorHandler
-  );
-
-  const generateReadmeDisposal = vscode.commands.registerCommand(
-    'codecritter.generateReadme',
-    generateReadmeHandler
-  );
-
-  const fixIssueDisposable = vscode.commands.registerCommand(
-    'codecritter.fixIssue',
-    (document: vscode.TextDocument, diagnostic: vscode.Diagnostic) =>
-      fixIssueHandler(document, diagnostic, context)
-  );
-
-  const codeActionProviderDisposable = vscode.languages.registerCodeActionsProvider(
-    { scheme: 'file' },
-    new CodeCritterActionProvider(),
-    { providedCodeActionKinds: CodeCritterActionProvider.providedCodeActionKinds }
-  );
-
   context.subscriptions.push(
-    startReviewDisposable,
-    toggleAutoReviewDisposable,
-    selectPersonaDisposable,
+    vscode.commands.registerCommand('codecritter.start', () => startReviewHandler(context)),
+    vscode.commands.registerCommand('codecritter.toggleAutoReview', toggleAutoReviewHandler),
+    vscode.commands.registerCommand('codecritter.selectPersona', selectPersonaHandler),
+    vscode.commands.registerCommand('codecritter.explainCode', () => explainCodeHandler(context)),
+    vscode.commands.registerCommand('codecritter.showStats', () => showStatsHandler(context)),
+    vscode.commands.registerCommand('codecritter.generateTests', () => generateTestsHandler(context)),
+    vscode.commands.registerCommand('codecritter.refactor', () => intelligentRefactorHandler(context)),
+    vscode.commands.registerCommand('codecritter.generateReadme', () => generateReadmeHandler(context)),
+    vscode.commands.registerCommand(
+      'codecritter.fixIssue',
+      (document: vscode.TextDocument, diagnostic: vscode.Diagnostic) =>
+        fixIssueHandler(document, diagnostic, context)
+    ),
+    // Fix 2: commit assistant is now a dedicated command, not wired to onSave
+    vscode.commands.registerCommand('codecritter.commitAssist', () => commitAssistHandler(context)),
+    vscode.languages.registerCodeActionsProvider(
+      { scheme: 'file' },
+      new CodeCritterActionProvider(),
+      { providedCodeActionKinds: CodeCritterActionProvider.providedCodeActionKinds }
+    ),
     personaStatusBarItem,
-    explainCodeDisposable,
-    showStatsDisposable,
-    generateTestsDisposable,
-    intelligentRefactorDisposable,
-    generateReadmeDisposal,
-    fixIssueDisposable,
-    codeActionProviderDisposable
   );
 }

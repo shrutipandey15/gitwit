@@ -19,8 +19,16 @@ import { diagnosticCollection, reviewStatusBar } from "../extension";
 import * as path from "path";
 import { Buffer } from 'buffer';
 
+// -- Fix 1: SecretStorage key ------------------------------------------------
+const SECRET_KEY = "codecritter.apiKey";
+
+async function getApiKeyFromSecrets(context: vscode.ExtensionContext): Promise<string | undefined> {
+  return context.secrets.get(SECRET_KEY);
+}
+
+// -- Fix 2 & 3: per-document debounce (2 s) for auto-review -----------------
 let isReviewInProgress = false;
-let lastOfferedStagedDiff = '';
+const reviewDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 
 export async function startReviewHandler(context: vscode.ExtensionContext) {
@@ -33,7 +41,9 @@ export async function startReviewHandler(context: vscode.ExtensionContext) {
             case "getApiKey":
               panel.postMessage({
                 command: "setApiKey",
-                apiKey: config.get("apiKey"),
+                // Return a masked placeholder so the webview knows a key is set,
+                // but never expose the actual secret value to the renderer.
+                apiKey: (await context.secrets.get(SECRET_KEY)) ? "••••••••" : "",
               });
               return;
 
@@ -75,15 +85,12 @@ export async function startReviewHandler(context: vscode.ExtensionContext) {
               }
               return;
 
+            // Fix 1: store key in OS keychain, not settings.json
             case "saveApiKey":
               try {
-                await config.update(
-                  "apiKey",
-                  message.apiKey,
-                  vscode.ConfigurationTarget.Global
-                );
+                await context.secrets.store(SECRET_KEY, message.apiKey);
                 vscode.window.showInformationMessage(
-                  "CodeCritter API Key saved successfully!"
+                  "CodeCritter API Key saved securely!"
                 );
               } catch (error) {
                 console.error("Failed to save API key:", error);
@@ -95,7 +102,7 @@ export async function startReviewHandler(context: vscode.ExtensionContext) {
 
             case "review":
               try {
-                const userApiKey = config.get<string>("apiKey");
+                const userApiKey = await context.secrets.get(SECRET_KEY);
                 const currentPersona = config.get<string>("persona", "Strict Tech Lead");
 
                 if (!userApiKey) {
@@ -128,7 +135,7 @@ export async function startReviewHandler(context: vscode.ExtensionContext) {
 
             case "generateDocstring":
               try {
-                const userApiKey = config.get<string>("apiKey");
+                const userApiKey = await context.secrets.get(SECRET_KEY);
                 if (!userApiKey) {
                   vscode.window.showWarningMessage(
                     "Please set your Gemini API key in the CodeCritter settings first."
@@ -178,16 +185,90 @@ export async function toggleAutoReviewHandler() {
   );
 }
 
+// Fix 2: standalone commit-assist command (decoupled from save)
+export async function commitAssistHandler(context: vscode.ExtensionContext) {
+  const config = vscode.workspace.getConfiguration('codecritter');
+  const userApiKey = await getApiKeyFromSecrets(context);
+  if (!userApiKey) {
+    vscode.window.showWarningMessage('Please set your Gemini API key in the CodeCritter settings.');
+    return;
+  }
+
+  const stagedDiff = await executeCommand('git diff --staged');
+  if (!stagedDiff.trim()) {
+    vscode.window.showInformationMessage('CodeCritter: No staged changes found. Stage some files first.');
+    return;
+  }
+
+  try {
+    const activeFile = vscode.window.activeTextEditor?.document.fileName ?? '';
+    const analysis = await analyzeAndSuggestCommit(stagedDiff, activeFile, userApiKey);
+
+    if (!analysis.ready) {
+      vscode.window.showInformationMessage('CodeCritter: Changes do not look ready to commit yet.');
+      return;
+    }
+
+    const persona = config.get<string>('persona', 'Strict Tech Lead');
+    const personaPrompts: Record<string, string> = {
+      'Supportive Mentor': "Great work! Edit or accept the commit message:",
+      'Sarcastic Reviewer': "Fine. Edit it if you must, then commit.",
+      'Code Poet': "A fine change. Craft your commit message:",
+      'Paranoid Security Engineer': "Acceptable. Review the message carefully:",
+      'Rubber Duck': "What does this commit actually do? Edit the message:",
+      'Strict Tech Lead': "Ready to commit. Edit the message if needed:",
+    };
+    const prompt = personaPrompts[persona] ?? "Edit or accept the commit message:";
+
+    const editedMessage = await vscode.window.showInputBox({
+      title: 'CodeCritter Commit Assistant',
+      prompt,
+      value: analysis.commitMessage,
+      placeHolder: 'Enter commit message',
+      validateInput: (val) => val.trim() ? null : 'Commit message cannot be empty',
+    });
+
+    if (editedMessage !== undefined) {
+      try {
+        await executeGitCommit(editedMessage.trim());
+        vscode.window.showInformationMessage(`CodeCritter: Committed — "${editedMessage.trim()}"`);
+      } catch (commitError) {
+        const msg = commitError instanceof Error ? commitError.message : 'Unknown error';
+        vscode.window.showErrorMessage(`CodeCritter: Commit failed — ${msg}`);
+      }
+    }
+  } catch (error) {
+    console.error('CodeCritter: Failed to analyze for commit:', error);
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    vscode.window.showErrorMessage(`CodeCritter: Commit assist failed — ${msg}`);
+  }
+}
+
+// Fix 3: debounced auto-review — no commit assist, 2 s idle before firing
 export async function onDidSaveTextDocumentHandler(document: vscode.TextDocument, context: vscode.ExtensionContext) {
     const config = vscode.workspace.getConfiguration('codecritter');
-    const userApiKey = config.get<string>('apiKey');
+    const userApiKey = await getApiKeyFromSecrets(context);
     if (!userApiKey) {
-        console.warn("CodeCritter: Aborting onDidSave handlers because no API key is set.");
         return;
     }
 
     const autoReviewEnabled = config.get('autoReviewEnabled', true);
-    if (autoReviewEnabled && !isReviewInProgress && !shouldSkipFile(document)) {
+    if (!autoReviewEnabled || shouldSkipFile(document)) {
+        return;
+    }
+
+    // Cancel any pending timer for this document
+    const docKey = document.uri.toString();
+    const existing = reviewDebounceTimers.get(docKey);
+    if (existing) {
+        clearTimeout(existing);
+    }
+
+    // Schedule the review to fire 2 s after the last save
+    const timer = setTimeout(async () => {
+        reviewDebounceTimers.delete(docKey);
+
+        if (isReviewInProgress) { return; }
         isReviewInProgress = true;
         try {
             const currentContent = document.getText();
@@ -197,64 +278,9 @@ export async function onDidSaveTextDocumentHandler(document: vscode.TextDocument
         } finally {
             isReviewInProgress = false;
         }
-    }
+    }, 2000);
 
-    const diagnostics = diagnosticCollection.get(document.uri);
-    const hasErrors = diagnostics?.some(d => d.severity === vscode.DiagnosticSeverity.Error);
-
-    if (hasErrors) {
-        return;
-    }
-
-    const commitAssistEnabled = config.get('commitAssistEnabled', true);
-    if (commitAssistEnabled) {
-        const stagedDiff = await executeCommand('git diff --staged');
-
-        // Only trigger when there are staged changes and we haven't offered for this exact diff yet
-        if (!stagedDiff.trim() || stagedDiff === lastOfferedStagedDiff) {
-            return;
-        }
-
-        lastOfferedStagedDiff = stagedDiff;
-
-        try {
-            const analysis = await analyzeAndSuggestCommit(stagedDiff, document.fileName, userApiKey);
-
-            if (analysis.ready) {
-                const persona = config.get<string>('persona', 'Strict Tech Lead');
-                const personaPrompts: Record<string, string> = {
-                    'Supportive Mentor': "Great work! Edit or accept the commit message:",
-                    'Sarcastic Reviewer': "Fine. Edit it if you must, then commit.",
-                    'Code Poet': "A fine change. Craft your commit message:",
-                    'Paranoid Security Engineer': "Acceptable. Review the message carefully:",
-                    'Rubber Duck': "What does this commit actually do? Edit the message:",
-                    'Strict Tech Lead': "Ready to commit. Edit the message if needed:",
-                };
-                const prompt = personaPrompts[persona] ?? "Edit or accept the commit message:";
-
-                const editedMessage = await vscode.window.showInputBox({
-                    title: 'CodeCritter Commit Assistant',
-                    prompt,
-                    value: analysis.commitMessage,
-                    placeHolder: 'Enter commit message',
-                    validateInput: (val) => val.trim() ? null : 'Commit message cannot be empty',
-                });
-
-                if (editedMessage !== undefined) {
-                    try {
-                        await executeGitCommit(editedMessage.trim());
-                        lastOfferedStagedDiff = ''; // reset so next staged batch can trigger
-                        vscode.window.showInformationMessage(`CodeCritter: Committed — "${editedMessage.trim()}"`);
-                    } catch (commitError) {
-                        const msg = commitError instanceof Error ? commitError.message : 'Unknown error';
-                        vscode.window.showErrorMessage(`CodeCritter: Commit failed — ${msg}`);
-                    }
-                }
-            }
-        } catch (error) {
-            console.error('CodeCritter: Failed to analyze for commit:', error);
-        }
-    }
+    reviewDebounceTimers.set(docKey, timer);
 }
 
 
@@ -286,15 +312,14 @@ export async function selectPersonaHandler() {
   }
 }
 
-export async function explainCodeHandler() {
+export async function explainCodeHandler(context: vscode.ExtensionContext) {
   const editor = vscode.window.activeTextEditor;
   if (!editor || editor.selection.isEmpty) {
     vscode.window.showInformationMessage("Please select some code to explain.");
     return;
   }
 
-  const config = vscode.workspace.getConfiguration("codecritter");
-  const apiKey = config.get<string>("apiKey");
+  const apiKey = await getApiKeyFromSecrets(context);
   if (!apiKey) {
     vscode.window.showWarningMessage(
       "Please set your Gemini API key in the CodeCritter settings."
@@ -596,16 +621,14 @@ async function extractTestableSymbols(
   return parts.join('\n\n');
 }
 
-export async function generateTestsHandler() {
+export async function generateTestsHandler(context: vscode.ExtensionContext) {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
     vscode.window.showInformationMessage("Open a file to generate tests.");
     return;
   }
 
-  const config = vscode.workspace.getConfiguration("codecritter");
-  const apiKey = config.get<string>("apiKey");
-
+  const apiKey = await getApiKeyFromSecrets(context);
   if (!apiKey) {
     vscode.window.showWarningMessage("Please set your Gemini API key first.");
     return;
@@ -624,7 +647,7 @@ export async function generateTestsHandler() {
     cancellable: false,
   }, async () => {
     try {
-      const testFileContent = await generateTests(codeToTest, apiKey, framework, symbolsContext);      
+      const testFileContent = await generateTests(codeToTest, apiKey, framework, symbolsContext);
       const currentFilePath = editor.document.uri.fsPath;
       const fileExtension = path.extname(currentFilePath);
       const baseName = path.basename(currentFilePath, fileExtension);
@@ -642,12 +665,11 @@ export async function generateTestsHandler() {
   });
 }
 
-export async function intelligentRefactorHandler() {
+export async function intelligentRefactorHandler(context: vscode.ExtensionContext) {
   const editor = vscode.window.activeTextEditor;
   if (!editor) { return; }
 
-  const config = vscode.workspace.getConfiguration("codecritter");
-  const apiKey = config.get<string>("apiKey");
+  const apiKey = await getApiKeyFromSecrets(context);
   if (!apiKey) {
     vscode.window.showInformationMessage("Please set your Gemini API key.");
     return;
@@ -743,7 +765,7 @@ async function buildFileTree(dir: vscode.Uri, indent: string = ''): Promise<stri
   });
 
   for (const [name, type] of entries) {
-    if (ignored.includes(name)) continue;
+    if (ignored.includes(name)) { continue; }
 
     if (type === vscode.FileType.Directory) {
       tree += `${indent}├── ${name}/\n`;
@@ -766,42 +788,62 @@ const EXT_TO_LANGUAGE_ID: Record<string, string> = {
 
 const MAX_SUMMARY_FILE_LENGTH = 8000;
 
+// Fix 4: parallel batches — cap at 30 files, run 5 summaries concurrently
+const README_MAX_FILES = 30;
+const README_CONCURRENCY = 5;
+
 async function getFileSummaries(
   files: vscode.Uri[],
   apiKey: string,
   progress: vscode.Progress<{ message?: string; increment?: number }>
 ): Promise<string[]> {
+  // Limit the total number of files to summarize to keep runtime sane
+  const filesToProcess = files.slice(0, README_MAX_FILES);
+  const totalFiles = filesToProcess.length;
   const summaries: string[] = [];
-  const totalFiles = files.length;
+  let completed = 0;
 
-  for (let i = 0; i < totalFiles; i++) {
-    const file = files[i];
-    progress.report({
-      message: `Analyzing ${path.basename(file.fsPath)}...`,
-      increment: (1 / totalFiles) * 50,
-    });
-    try {
-      const raw = await vscode.workspace.fs.readFile(file);
-      const content = Buffer.from(raw).toString('utf-8');
+  // Process in parallel batches of README_CONCURRENCY
+  for (let i = 0; i < totalFiles; i += README_CONCURRENCY) {
+    const batch = filesToProcess.slice(i, i + README_CONCURRENCY);
 
-      const ext = path.extname(file.fsPath).substring(1).toLowerCase();
-      const languageId = EXT_TO_LANGUAGE_ID[ext];
+    const batchResults = await Promise.all(
+      batch.map(async (file): Promise<string | null> => {
+        try {
+          const raw = await vscode.workspace.fs.readFile(file);
+          const content = Buffer.from(raw).toString('utf-8');
+          const ext = path.extname(file.fsPath).substring(1).toLowerCase();
+          const languageId = EXT_TO_LANGUAGE_ID[ext];
 
-      if (!languageId || content.trim().length < 50) {
-        continue;
-      }
+          if (!languageId || content.trim().length < 50) {
+            return null;
+          }
 
-      const contentToSummarize = content.length > MAX_SUMMARY_FILE_LENGTH
-        ? content.slice(0, MAX_SUMMARY_FILE_LENGTH)
-        : content;
+          const contentToSummarize = content.length > MAX_SUMMARY_FILE_LENGTH
+            ? content.slice(0, MAX_SUMMARY_FILE_LENGTH)
+            : content;
 
-      const summary = await summarizeFileContent(contentToSummarize, apiKey, languageId);
-      const relativePath = vscode.workspace.asRelativePath(file);
-      summaries.push(`- \`${relativePath}\`: ${summary}`);
-    } catch (e) {
-      console.warn(`Could not read or summarize file: ${file.fsPath}`, e);
+          const summary = await summarizeFileContent(contentToSummarize, apiKey, languageId);
+          const relativePath = vscode.workspace.asRelativePath(file);
+          return `- \`${relativePath}\`: ${summary}`;
+        } catch (e) {
+          console.warn(`Could not read or summarize file: ${file.fsPath}`, e);
+          return null;
+        }
+      })
+    );
+
+    for (const result of batchResults) {
+      if (result) { summaries.push(result); }
     }
+
+    completed += batch.length;
+    progress.report({
+      message: `Analyzed ${completed}/${totalFiles} files...`,
+      increment: (batch.length / totalFiles) * 50,
+    });
   }
+
   return summaries;
 }
 
@@ -810,8 +852,7 @@ export async function fixIssueHandler(
   diagnostic: vscode.Diagnostic,
   context: vscode.ExtensionContext
 ): Promise<void> {
-  const config = vscode.workspace.getConfiguration('codecritter');
-  const apiKey = config.get<string>('apiKey');
+  const apiKey = await getApiKeyFromSecrets(context);
   if (!apiKey) {
     vscode.window.showWarningMessage('Please set your Gemini API key first.');
     return;
@@ -867,7 +908,7 @@ export async function fixIssueHandler(
   );
 }
 
-export async function generateReadmeHandler() {
+export async function generateReadmeHandler(context: vscode.ExtensionContext) {
   const workspaceFolders = vscode.workspace.workspaceFolders;
   if (!workspaceFolders || workspaceFolders.length === 0) {
     vscode.window.showErrorMessage('Please open a project folder first.');
@@ -875,8 +916,7 @@ export async function generateReadmeHandler() {
   }
   const rootUri = workspaceFolders[0].uri;
 
-  const config = vscode.workspace.getConfiguration('codecritter');
-  const apiKey = config.get<string>('apiKey');
+  const apiKey = await getApiKeyFromSecrets(context);
   if (!apiKey) {
     vscode.window.showInformationMessage('Please set your Gemini API key.');
     return;
